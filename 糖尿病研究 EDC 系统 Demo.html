@@ -32,9 +32,45 @@
   ::-webkit-scrollbar-track { background: #f1f5f9; }
   ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
   .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  /* 登录层 */
+  #login-overlay { position:fixed;inset:0;background:linear-gradient(135deg,#1e40af 0%,#1d4ed8 40%,#2563eb 100%);display:flex;align-items:center;justify-content:center;z-index:9999; }
+  #login-overlay.hidden { display:none; }
+  .login-card { background:white;border-radius:20px;padding:40px 36px;width:360px;box-shadow:0 25px 50px rgba(0,0,0,0.25); }
+  .login-input { width:100%;border:1.5px solid #e5e7eb;border-radius:10px;padding:10px 14px;font-size:14px;outline:none;transition:border-color 0.15s; }
+  .login-input:focus { border-color:#3b82f6; }
+  .login-btn { width:100%;background:#2563eb;color:white;border:none;border-radius:10px;padding:11px;font-size:15px;font-weight:600;cursor:pointer;transition:background 0.15s; }
+  .login-btn:hover { background:#1d4ed8; }
+  .login-btn:disabled { background:#93c5fd;cursor:not-allowed; }
+  .login-error { color:#ef4444;font-size:13px;margin-top:8px;min-height:18px; }
 </style>
 </head>
 <body class="bg-gray-50 h-screen flex overflow-hidden text-gray-800">
+
+<!-- ===== LOGIN OVERLAY ===== -->
+<div id="login-overlay">
+  <div class="login-card">
+    <div class="text-center mb-6">
+      <div class="inline-flex items-center justify-center w-14 h-14 bg-blue-100 rounded-2xl mb-3">
+        <svg class="w-7 h-7 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+      </div>
+      <div class="text-xl font-bold text-gray-800">三一照护研究</div>
+      <div class="text-sm text-gray-400 mt-1">数据录入系统</div>
+    </div>
+    <div class="space-y-3">
+      <div>
+        <label class="text-xs font-medium text-gray-600 block mb-1.5">用户名</label>
+        <input id="login-username" type="text" class="login-input" placeholder="请输入用户名" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()"/>
+      </div>
+      <div>
+        <label class="text-xs font-medium text-gray-600 block mb-1.5">密码</label>
+        <input id="login-password" type="password" class="login-input" placeholder="请输入密码" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/>
+      </div>
+      <div id="login-error" class="login-error"></div>
+      <button id="login-btn" class="login-btn" onclick="doLogin()">登 录</button>
+    </div>
+    <div class="text-center text-xs text-gray-300 mt-6">天津医科大学第二医院 · 临床研究中心</div>
+  </div>
+</div>
 
 <!-- ===== SIDEBAR ===== -->
 <aside class="w-56 bg-white border-r border-gray-200 flex flex-col flex-shrink-0 shadow-sm">
@@ -58,8 +94,11 @@
   </nav>
   <div class="px-4 py-3 border-t border-gray-100 bg-gray-50">
     <div class="text-xs text-gray-500">当前账号</div>
-    <div class="text-sm font-medium text-gray-700">陈雨 医生</div>
-    <div class="text-xs text-blue-500 mt-0.5">天津医科大学第二医院</div>
+    <div id="sidebar-username" class="text-sm font-medium text-gray-700">—</div>
+    <div class="flex items-center justify-between mt-0.5">
+      <div class="text-xs text-blue-500">天津医科大学第二医院</div>
+      <button onclick="doLogout()" class="text-xs text-gray-400 hover:text-red-500 transition" title="退出登录">退出</button>
+    </div>
   </div>
 </aside>
 
@@ -69,7 +108,7 @@
   <header class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between flex-shrink-0">
     <div id="page-title" class="font-semibold text-gray-700 text-base">概况</div>
     <div class="flex items-center gap-3">
-      <span class="text-xs text-gray-400">2026-02-28</span>
+      <span id="header-date" class="text-xs text-gray-400"></span>
       <button onclick="showPage('entry', document.querySelectorAll('.sidebar-item')[2])" class="bg-blue-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-blue-700 transition flex items-center gap-1.5">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>新建录入
       </button>
@@ -539,6 +578,120 @@
 <div id="toast" class="fixed bottom-6 right-6 bg-gray-900 text-white text-sm px-5 py-3 rounded-xl shadow-lg opacity-0 transition-opacity duration-300 pointer-events-none z-50"></div>
 
 <script>
+// ======= CONFIG =======
+const API_BASE = 'http://localhost:8000';
+
+// ======= AUTH HELPERS =======
+function getToken() { return sessionStorage.getItem('edc_token'); }
+function setToken(t) { sessionStorage.setItem('edc_token', t); }
+function clearToken() { sessionStorage.removeItem('edc_token'); sessionStorage.removeItem('edc_user'); }
+function getUser() { try { return JSON.parse(sessionStorage.getItem('edc_user') || 'null'); } catch(e){ return null; } }
+function setUser(u) { sessionStorage.setItem('edc_user', JSON.stringify(u)); }
+
+// ======= API FETCH =======
+async function api(method, path, body) {
+  const token = getToken();
+  const opts = {
+    method,
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+  };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  const res = await fetch(API_BASE + path, opts);
+  if (res.status === 401) { doLogout(); return null; }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || res.statusText);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+// ======= LOGIN / LOGOUT =======
+async function doLogin() {
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
+  const btn = document.getElementById('login-btn');
+  errEl.textContent = '';
+  if (!username || !password) { errEl.textContent = '请填写用户名和密码'; return; }
+  btn.disabled = true;
+  btn.textContent = '登录中…';
+  try {
+    const form = new URLSearchParams({ username, password, grant_type: 'password' });
+    const res = await fetch(API_BASE + '/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: '登录失败' }));
+      throw new Error(err.detail || '登录失败');
+    }
+    const data = await res.json();
+    setToken(data.access_token);
+    setUser(data.user);
+    onLoginSuccess(data.user);
+  } catch(e) {
+    errEl.textContent = e.message || '网络错误，请检查服务是否启动';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '登 录';
+  }
+}
+
+function onLoginSuccess(user) {
+  document.getElementById('login-overlay').classList.add('hidden');
+  const name = user.full_name || user.username;
+  document.getElementById('sidebar-username').textContent = name;
+  loadDashboard();
+}
+
+function doLogout() {
+  clearToken();
+  document.getElementById('login-overlay').classList.remove('hidden');
+  document.getElementById('login-username').value = '';
+  document.getElementById('login-password').value = '';
+  document.getElementById('login-error').textContent = '';
+}
+
+// ======= DASHBOARD LOAD =======
+async function loadDashboard() {
+  try {
+    const data = await api('GET', '/api/patients/stats');
+    if (!data) return;
+    const els = document.querySelectorAll('#page-dashboard .text-3xl');
+    if (els[0]) els[0].textContent = data.total ?? '—';
+    if (els[1]) els[1].textContent = data.draft ?? '—';
+    if (els[2]) els[2].textContent = data.submitted ?? '—';
+    const sub = document.querySelector('#page-dashboard .text-green-500');
+    if (sub && data.this_month != null) sub.textContent = '↑ 本月新增 ' + data.this_month;
+  } catch(e) { /* 静默失败，保留静态数字 */ }
+}
+
+// ======= BOOT =======
+document.addEventListener('DOMContentLoaded', () => {
+  // 设置今日日期
+  const d = new Date();
+  const dateStr = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  const el = document.getElementById('header-date');
+  if(el) el.textContent = dateStr;
+  // 检查已有 token
+  const token = getToken();
+  const user = getUser();
+  if (token && user) {
+    onLoginSuccess(user);
+  }
+  // 以下原有初始化
+  renderPatients();
+  renderComorbidities();
+  renderEQ5D();
+  renderDTSQ();
+  buildLikertTable('phq9-table', phq9Items, 'phq9', ['完全不会(0)','好几天(1)','一半以上天数(2)','几乎每天(3)'], calcPHQ9);
+  buildLikertTable('gad7-table', gad7Items, 'gad7', ['完全不会(0)','好几天(1)','超过一周(2)','几乎每天(3)'], calcGAD7);
+  buildDietTable();
+  buildExerciseTable();
+  buildMealForm();
+});
+
 // ======= DATA =======
 const patients = [
   {id:'CHN-017-161',ini:'AZL',sex:'女',age:68,date:'2024-02-24',visits:'基线/M6/M12',status:'已完成'},
@@ -559,18 +712,7 @@ const statusColor = {
   '待签名':'bg-blue-100 text-blue-700',
 };
 
-// ======= INIT =======
-document.addEventListener('DOMContentLoaded', () => {
-  renderPatients();
-  renderComorbidities();
-  renderEQ5D();
-  renderDTSQ();
-  buildLikertTable('phq9-table', phq9Items, 'phq9', ['完全不会(0)','好几天(1)','一半以上天数(2)','几乎每天(3)'], calcPHQ9);
-  buildLikertTable('gad7-table', gad7Items, 'gad7', ['完全不会(0)','好几天(1)','超过一周(2)','几乎每天(3)'], calcGAD7);
-  buildDietTable();
-  buildExerciseTable();
-  buildMealForm();
-});
+// ======= INIT (moved to BOOT above) =======
 
 // ======= NAVIGATION =======
 function showPage(name, el) {
