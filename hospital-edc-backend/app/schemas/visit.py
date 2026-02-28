@@ -4,7 +4,7 @@ from datetime import date, datetime
 
 
 class VisitCreate(BaseModel):
-    patient_id: int
+    patient_id: Optional[int] = None   # 通过 URL 传入时可省略
     visit_type: str          # baseline | M6 | M12 | M18 | M24
     visit_date: date
 

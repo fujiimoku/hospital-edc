@@ -1,4 +1,4 @@
-import json
+﻿import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -218,6 +218,17 @@ def save_meal_records(visit_id: int, data: MealRecordBatchIn, db: Session = Depe
         db.add(MealRecord(visit_id=visit_id, **rec.model_dump(exclude_unset=True)))
     db.commit()
     return {"message": f"膳食记录保存成功，共 {len(data.records)} 条"}
+
+
+# /meals 是 /meal-records 的别名，与 API 表格对齐
+@router.get("/{visit_id}/meals")
+def get_meals(visit_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return get_meal_records(visit_id, db, current_user)
+
+
+@router.post("/{visit_id}/meals")
+def save_meals(visit_id: int, data: MealRecordBatchIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    return save_meal_records(visit_id, data, db, current_user)
 
 
 #  一次性获取全部表单数据 

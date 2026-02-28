@@ -112,3 +112,57 @@ def delete_patient(
     patient.status = "withdrawn"
     db.commit()
     return {"message": "患者已标记为退出"}
+
+
+# ── 嵌套在患者下的访视路由 ─────────────────────────
+
+from app.schemas.visit import VisitCreate, VisitOut  # noqa: E402
+
+
+@router.get("/{patient_id}/visits", response_model=List[VisitOut])
+def list_patient_visits(
+    patient_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """获取某患者的所有访视记录"""
+    if not db.query(Patient).filter(Patient.id == patient_id).first():
+        raise HTTPException(404, "患者不存在")
+    return (
+        db.query(Visit)
+        .filter(Visit.patient_id == patient_id)
+        .order_by(Visit.visit_date)
+        .all()
+    )
+
+
+@router.post("/{patient_id}/visits", response_model=VisitOut, status_code=201)
+def create_patient_visit(
+    patient_id: int,
+    data: VisitCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """为指定患者创建新访视"""
+    if not db.query(Patient).filter(Patient.id == patient_id).first():
+        raise HTTPException(404, "患者不存在")
+    # patient_id 以 URL 为准，覆盖 body 中的字段
+    data.patient_id = patient_id
+    existing = (
+        db.query(Visit)
+        .filter(Visit.patient_id == patient_id, Visit.visit_type == data.visit_type)
+        .first()
+    )
+    if existing:
+        raise HTTPException(400, f"该患者已存在 {data.visit_type} 访视记录")
+    visit = Visit(
+        patient_id=patient_id,
+        visit_type=data.visit_type,
+        visit_date=data.visit_date,
+        status="draft",
+        created_by=current_user.id,
+    )
+    db.add(visit)
+    db.commit()
+    db.refresh(visit)
+    return visit
