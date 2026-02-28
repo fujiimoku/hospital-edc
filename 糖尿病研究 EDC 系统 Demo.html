@@ -1,0 +1,953 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>三一照护研究 · 数据录入系统</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+  .sidebar-item { transition: all 0.15s; }
+  .sidebar-item:hover { background: rgba(59,130,246,0.12); }
+  .sidebar-item.active { background: #3b82f6; color: white; }
+  .tab-btn { transition: all 0.15s; border-bottom: 2px solid transparent; }
+  .tab-btn.active { border-bottom-color: #3b82f6; color: #3b82f6; font-weight: 600; }
+  .tab-btn:hover:not(.active) { color: #3b82f6; background: #eff6ff; }
+  .form-section { border-left: 3px solid #3b82f6; padding-left: 12px; margin-bottom: 24px; }
+  .score-badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .fade-in { animation: fadeIn 0.2s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  input[type=number]::-webkit-inner-spin-button { opacity: 0.4; }
+  .radio-group label { cursor: pointer; padding: 4px 10px; border-radius: 6px; border: 1px solid #e5e7eb; font-size: 13px; display: inline-flex; align-items: center; gap: 4px; transition: all 0.1s; }
+  .radio-group label:hover { border-color: #3b82f6; background: #eff6ff; }
+  .radio-group input[type=radio]:checked + span { color: #2563eb; font-weight: 600; }
+  .likert-table th, .likert-table td { padding: 8px 10px; text-align: center; font-size: 13px; border-bottom: 1px solid #f1f5f9; }
+  .likert-table th { background: #f8fafc; font-weight: 600; color: #64748b; }
+  .likert-table tr:hover td { background: #f8faff; }
+  .page { display: none; }
+  .page.active { display: block; }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: #f1f5f9; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+</style>
+</head>
+<body class="bg-gray-50 h-screen flex overflow-hidden text-gray-800">
+
+<!-- ===== SIDEBAR ===== -->
+<aside class="w-56 bg-white border-r border-gray-200 flex flex-col flex-shrink-0 shadow-sm">
+  <div class="px-5 py-4 border-b border-gray-100">
+    <div class="text-blue-600 font-bold text-base leading-tight">三一照护研究</div>
+    <div class="text-gray-400 text-xs mt-0.5">数据录入系统 v1.0</div>
+  </div>
+  <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+    <div class="sidebar-item active rounded-lg px-3 py-2 flex items-center gap-2.5 text-sm cursor-pointer" onclick="showPage('dashboard',this)">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7h18M3 12h18M3 17h18"/></svg>概况
+    </div>
+    <div class="sidebar-item rounded-lg px-3 py-2 flex items-center gap-2.5 text-sm cursor-pointer text-gray-600" onclick="showPage('patients',this)">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0"/></svg>患者管理
+    </div>
+    <div class="sidebar-item rounded-lg px-3 py-2 flex items-center gap-2.5 text-sm cursor-pointer text-gray-600" onclick="showPage('entry',this)">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>数据录入
+    </div>
+    <div class="sidebar-item rounded-lg px-3 py-2 flex items-center gap-2.5 text-sm cursor-pointer text-gray-600" onclick="showPage('consent',this)">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>知情同意
+    </div>
+  </nav>
+  <div class="px-4 py-3 border-t border-gray-100 bg-gray-50">
+    <div class="text-xs text-gray-500">当前账号</div>
+    <div class="text-sm font-medium text-gray-700">陈雨 医生</div>
+    <div class="text-xs text-blue-500 mt-0.5">天津医科大学第二医院</div>
+  </div>
+</aside>
+
+<!-- ===== MAIN ===== -->
+<main class="flex-1 flex flex-col overflow-hidden">
+  <!-- Top Bar -->
+  <header class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between flex-shrink-0">
+    <div id="page-title" class="font-semibold text-gray-700 text-base">概况</div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs text-gray-400">2026-02-28</span>
+      <button onclick="showPage('entry', document.querySelectorAll('.sidebar-item')[2])" class="bg-blue-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-blue-700 transition flex items-center gap-1.5">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>新建录入
+      </button>
+    </div>
+  </header>
+
+  <div class="flex-1 overflow-y-auto">
+
+  <!-- ===== PAGE: DASHBOARD ===== -->
+  <div id="page-dashboard" class="page active fade-in p-6">
+    <!-- Stats -->
+    <div class="grid grid-cols-4 gap-4 mb-6">
+      <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+        <div class="text-xs text-gray-400 mb-1">患者总数</div>
+        <div class="text-3xl font-bold text-gray-800">163</div>
+        <div class="text-xs text-green-500 mt-1">↑ 本月新增 12</div>
+      </div>
+      <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+        <div class="text-xs text-gray-400 mb-1">待完成表单</div>
+        <div class="text-3xl font-bold text-orange-500">24</div>
+        <div class="text-xs text-gray-400 mt-1">需要录入</div>
+      </div>
+      <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+        <div class="text-xs text-gray-400 mb-1">待签名表单</div>
+        <div class="text-3xl font-bold text-blue-600">8</div>
+        <div class="text-xs text-gray-400 mt-1">待研究者确认</div>
+      </div>
+      <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+        <div class="text-xs text-gray-400 mb-1">数据完整率</div>
+        <div class="text-3xl font-bold text-green-600">91%</div>
+        <div class="text-xs text-gray-400 mt-1">基线访视</div>
+      </div>
+    </div>
+    <!-- Recent Patients -->
+    <div class="bg-white rounded-xl border border-gray-100 shadow-sm">
+      <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <span class="font-semibold text-gray-700">最近患者</span>
+        <button onclick="showPage('patients', document.querySelectorAll('.sidebar-item')[1])" class="text-blue-500 text-sm hover:underline">查看全部</button>
+      </div>
+      <table class="w-full">
+        <thead><tr class="bg-gray-50 text-xs text-gray-500">
+          <th class="px-5 py-3 text-left font-semibold">患者编号</th>
+          <th class="px-4 py-3 text-left font-semibold">姓名首字母</th>
+          <th class="px-4 py-3 text-left font-semibold">性别</th>
+          <th class="px-4 py-3 text-left font-semibold">年龄</th>
+          <th class="px-4 py-3 text-left font-semibold">入组日期</th>
+          <th class="px-4 py-3 text-left font-semibold">状态</th>
+          <th class="px-4 py-3 text-left font-semibold">操作</th>
+        </tr></thead>
+        <tbody class="text-sm text-gray-700 divide-y divide-gray-50">
+          <tr class="hover:bg-blue-50/40 cursor-pointer" onclick="showPage('entry', document.querySelectorAll('.sidebar-item')[2])">
+            <td class="px-5 py-3 font-mono text-blue-600">CHN-017-161</td><td class="px-4 py-3">AZL</td><td class="px-4 py-3">女</td><td class="px-4 py-3">68</td><td class="px-4 py-3">2024-02-24</td>
+            <td class="px-4 py-3"><span class="score-badge bg-green-100 text-green-700">已完成</span></td>
+            <td class="px-4 py-3"><button class="text-blue-500 text-xs hover:underline">录入</button></td>
+          </tr>
+          <tr class="hover:bg-blue-50/40 cursor-pointer">
+            <td class="px-5 py-3 font-mono text-blue-600">CHN-017-160</td><td class="px-4 py-3">QYG</td><td class="px-4 py-3">男</td><td class="px-4 py-3">55</td><td class="px-4 py-3">2024-02-24</td>
+            <td class="px-4 py-3"><span class="score-badge bg-orange-100 text-orange-700">待录入</span></td>
+            <td class="px-4 py-3"><button class="text-blue-500 text-xs hover:underline">录入</button></td>
+          </tr>
+          <tr class="hover:bg-blue-50/40 cursor-pointer">
+            <td class="px-5 py-3 font-mono text-blue-600">CHN-017-159</td><td class="px-4 py-3">JJ</td><td class="px-4 py-3">女</td><td class="px-4 py-3">72</td><td class="px-4 py-3">2024-02-24</td>
+            <td class="px-4 py-3"><span class="score-badge bg-blue-100 text-blue-700">待签名</span></td>
+            <td class="px-4 py-3"><button class="text-blue-500 text-xs hover:underline">录入</button></td>
+          </tr>
+          <tr class="hover:bg-blue-50/40 cursor-pointer">
+            <td class="px-5 py-3 font-mono text-blue-600">CHN-017-158</td><td class="px-4 py-3">GJJ</td><td class="px-4 py-3">男</td><td class="px-4 py-3">61</td><td class="px-4 py-3">2024-02-24</td>
+            <td class="px-4 py-3"><span class="score-badge bg-green-100 text-green-700">已完成</span></td>
+            <td class="px-4 py-3"><button class="text-blue-500 text-xs hover:underline">录入</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ===== PAGE: PATIENTS ===== -->
+  <div id="page-patients" class="page fade-in p-6">
+    <div class="bg-white rounded-xl border border-gray-100 shadow-sm">
+      <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <span class="font-semibold text-gray-700">患者列表（163）</span>
+        <div class="flex gap-3 items-center">
+          <input type="text" placeholder="搜索患者编号/首字母…" class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-52 focus:outline-none focus:border-blue-400"/>
+          <button onclick="showPage('entry', document.querySelectorAll('.sidebar-item')[2])" class="bg-blue-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-blue-700 transition">+ 创建患者</button>
+        </div>
+      </div>
+      <table class="w-full">
+        <thead><tr class="bg-gray-50 text-xs text-gray-500">
+          <th class="px-5 py-3 text-left font-semibold">患者编号</th>
+          <th class="px-4 py-3 text-left font-semibold">姓名首字母</th>
+          <th class="px-4 py-3 text-left font-semibold">性别</th>
+          <th class="px-4 py-3 text-left font-semibold">年龄</th>
+          <th class="px-4 py-3 text-left font-semibold">入组日期</th>
+          <th class="px-4 py-3 text-left font-semibold">访视进度</th>
+          <th class="px-4 py-3 text-left font-semibold">状态</th>
+          <th class="px-4 py-3 text-left font-semibold">操作</th>
+        </tr></thead>
+        <tbody class="text-sm text-gray-700 divide-y divide-gray-50" id="patient-table">
+        </tbody>
+      </table>
+      <div class="px-5 py-3 text-xs text-gray-400 border-t border-gray-100">显示 1-10 / 163 条</div>
+    </div>
+  </div>
+
+  <!-- ===== PAGE: DATA ENTRY ===== -->
+  <div id="page-entry" class="page fade-in">
+    <!-- Patient Header -->
+    <div class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <div>
+          <span class="font-mono text-blue-600 font-semibold text-base">CHN-017-161</span>
+          <span class="text-gray-400 mx-2">·</span>
+          <span class="text-gray-600 text-sm">AZL &nbsp;|&nbsp; 女 &nbsp;|&nbsp; 68岁</span>
+        </div>
+        <span class="score-badge bg-orange-100 text-orange-700 text-xs">基线访视</span>
+      </div>
+      <div class="flex gap-2">
+        <button class="border border-gray-200 text-gray-600 text-sm px-3 py-1.5 rounded-lg hover:bg-gray-50">保存草稿</button>
+        <button onclick="submitForm()" class="bg-blue-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-blue-700">提交表单</button>
+      </div>
+    </div>
+
+    <!-- Tab Bar -->
+    <div class="bg-white border-b border-gray-200 px-6 flex gap-0 overflow-x-auto flex-shrink-0">
+      <button class="tab-btn active px-4 py-3 text-sm whitespace-nowrap" onclick="switchTab('basic',this)">基本信息</button>
+      <button class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500" onclick="switchTab('comorbidity',this)">合并症</button>
+      <button class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500" onclick="switchTab('medication',this)">药物治疗</button>
+      <button class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500" onclick="switchTab('cost',this)">核心指标</button>
+      <button class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500" onclick="switchTab('eq5d',this)">EQ-5D-5L</button>
+      <button class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500" onclick="switchTab('dtsq',this)">DTSQ</button>
+      <button class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500" onclick="switchTab('phq9',this)">PHQ-9</button>
+      <button class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500" onclick="switchTab('gad7',this)">GAD-7</button>
+      <button class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500" onclick="switchTab('diet',this)">饮食评估</button>
+      <button class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500" onclick="switchTab('exercise',this)">运动评估</button>
+      <button class="tab-btn px-4 py-3 text-sm whitespace-nowrap text-gray-500" onclick="switchTab('meal',this)">膳食调查</button>
+    </div>
+
+    <div class="p-6 pb-10">
+
+    <!-- TAB: 基本信息 -->
+    <div id="tab-basic" class="tab-panel fade-in">
+      <div class="max-w-3xl space-y-6">
+        <div class="form-section">
+          <div class="text-sm font-semibold text-gray-700 mb-3">身份信息</div>
+          <div class="grid grid-cols-3 gap-4">
+            <div><label class="text-xs text-gray-500 mb-1 block">姓名</label><input type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="患者姓名"/></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">性别</label>
+              <select class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400">
+                <option>男</option><option>女</option>
+              </select></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">年龄</label><input type="number" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="岁"/></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">就诊号</label><input type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">就诊日期</label><input type="date" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/></div>
+          </div>
+        </div>
+        <div class="form-section">
+          <div class="text-sm font-semibold text-gray-700 mb-3">体格检查</div>
+          <div class="grid grid-cols-3 gap-4">
+            <div><label class="text-xs text-gray-500 mb-1 block">身高 (cm)</label><input type="number" step="0.1" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" oninput="calcBMI()"/></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">体重 (kg)</label><input type="number" step="0.1" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" oninput="calcBMI()"/></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">BMI (kg/m²) <span class="text-blue-400 text-xs">自动计算</span></label><input type="text" id="bmi-display" readonly class="w-full border border-blue-100 bg-blue-50 rounded-lg px-3 py-2 text-sm text-blue-700 font-semibold"/></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">腰围 (cm)</label><input type="number" step="0.1" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">臀围 (cm)</label><input type="number" step="0.1" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">心率 (次/分)</label><input type="number" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">收缩压 (mmHg)</label><input type="number" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">舒张压 (mmHg)</label><input type="number" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/></div>
+          </div>
+        </div>
+        <div class="form-section">
+          <div class="text-sm font-semibold text-gray-700 mb-3">实验室检查</div>
+          <div class="grid grid-cols-3 gap-4">
+            <div><label class="text-xs text-gray-500 mb-1 block">空腹血糖 (mmol/L)</label><input type="number" step="0.01" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">HbA1c (%)</label><input type="number" step="0.1" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">TC 总胆固醇 (mmol/L)</label><input type="number" step="0.01" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">TG 甘油三酯 (mmol/L)</label><input type="number" step="0.01" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">HDL-C (mmol/L)</label><input type="number" step="0.01" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">LDL-C (mmol/L)</label><input type="number" step="0.01" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">ALT (IU/L)</label><input type="number" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">AST (IU/L)</label><input type="number" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">Scr 血清肌酐 (μmol/L)</label><input type="number" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">eGFR</label><input type="number" step="0.1" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">UA 尿酸 (μmol/L)</label><input type="number" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">BUN</label><input type="number" step="0.01" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/></div>
+          </div>
+        </div>
+        <div class="form-section">
+          <div class="text-sm font-semibold text-gray-700 mb-3">社会学信息</div>
+          <div class="grid grid-cols-2 gap-4">
+            <div><label class="text-xs text-gray-500 mb-1 block">工作状态</label>
+              <select class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400">
+                <option value="">请选择</option><option>在职</option><option>无工作者</option><option>退休</option>
+              </select></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">教育水平</label>
+              <select class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400">
+                <option value="">请选择</option><option>文盲</option><option>小学（1-6年）</option><option>中学（7-13年）</option><option>大学/高等教育（>13年）</option>
+              </select></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">医保覆盖</label>
+              <select class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400">
+                <option value="">请选择</option><option>无</option><option>个人商保</option><option>社会医保</option><option>均有</option>
+              </select></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">吸烟情况</label>
+              <select class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400">
+                <option value="">请选择</option><option>不吸烟</option><option>曾经吸烟</option><option>目前吸烟</option>
+              </select></div>
+            <div><label class="text-xs text-gray-500 mb-1 block">饮酒情况</label>
+              <select class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400">
+                <option value="">请选择</option><option>不饮酒</option><option>既往饮酒</option><option>社交饮酒</option><option>大量饮酒</option>
+              </select></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: 合并症 -->
+    <div id="tab-comorbidity" class="tab-panel fade-in hidden">
+      <div class="max-w-2xl space-y-4">
+        <div class="text-xs text-blue-500 bg-blue-50 px-4 py-2 rounded-lg">以下内容首次就诊填写，后续访视可沿用。</div>
+        <div id="comorbidity-list"></div>
+        <div class="form-section mt-4">
+          <div class="text-sm font-semibold text-gray-700 mb-3">糖尿病并发症</div>
+          <div class="space-y-3" id="dm-complication-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: 药物治疗 -->
+    <div id="tab-medication" class="tab-panel fade-in hidden">
+      <div class="max-w-4xl">
+        <div class="flex justify-between items-center mb-4">
+          <div class="text-sm text-gray-500">记录当前所有正在使用的药物</div>
+          <button onclick="addMedRow()" class="bg-blue-50 text-blue-600 border border-blue-200 text-sm px-3 py-1.5 rounded-lg hover:bg-blue-100 transition">+ 添加药物</button>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <table class="w-full">
+            <thead><tr class="bg-gray-50 text-xs text-gray-500">
+              <th class="px-4 py-3 text-left font-semibold">治疗类型</th>
+              <th class="px-4 py-3 text-left font-semibold">药剂名</th>
+              <th class="px-4 py-3 text-left font-semibold">给药途径</th>
+              <th class="px-4 py-3 text-left font-semibold">用药剂量</th>
+              <th class="px-4 py-3 text-left font-semibold">用药频率</th>
+              <th class="px-4 py-3 text-left font-semibold">开始日期</th>
+              <th class="px-4 py-3 text-left font-semibold">正在进行</th>
+              <th class="px-4 py-3"></th>
+            </tr></thead>
+            <tbody id="med-table-body">
+              <tr id="med-row-template" class="border-t border-gray-100">
+                <td class="px-3 py-2"><select class="border border-gray-200 rounded-lg px-2 py-1.5 text-xs w-24 focus:outline-none focus:border-blue-400"><option>糖尿病</option><option>高血压</option><option>降脂</option><option>抗血小板</option><option>抗凝</option><option>其他</option></select></td>
+                <td class="px-3 py-2"><input type="text" class="border border-gray-200 rounded-lg px-2 py-1.5 text-xs w-28 focus:outline-none focus:border-blue-400" placeholder="药品名称"/></td>
+                <td class="px-3 py-2"><select class="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400"><option>口服</option><option>皮下注射</option><option>静脉注射</option><option>吸入</option><option>局部</option></select></td>
+                <td class="px-3 py-2"><input type="text" class="border border-gray-200 rounded-lg px-2 py-1.5 text-xs w-20 focus:outline-none focus:border-blue-400" placeholder="剂量单位"/></td>
+                <td class="px-3 py-2"><select class="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400"><option>QD</option><option>BID</option><option>TID</option><option>QW</option><option>Q2W</option><option>QM</option><option>PRN</option></select></td>
+                <td class="px-3 py-2"><input type="date" class="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400"/></td>
+                <td class="px-3 py-2 text-center"><input type="checkbox" checked class="w-4 h-4 accent-blue-500"/></td>
+                <td class="px-3 py-2"><button onclick="removeMedRow(this)" class="text-red-400 hover:text-red-600 text-xs">删除</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: 核心指标 -->
+    <div id="tab-cost" class="tab-panel fade-in hidden">
+      <div class="max-w-xl">
+        <div class="text-xs text-blue-500 bg-blue-50 px-4 py-2 rounded-lg mb-4">记录本次就诊的相关费用（元）</div>
+        <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <table class="w-full">
+            <thead><tr class="bg-gray-50 text-xs text-gray-500">
+              <th class="px-5 py-3 text-left font-semibold">收费类别</th>
+              <th class="px-5 py-3 text-left font-semibold">费用（元）</th>
+            </tr></thead>
+            <tbody class="divide-y divide-gray-50 text-sm">
+              <tr><td class="px-5 py-3 text-gray-700">药品费（所有降糖药）</td><td class="px-5 py-3"><input type="number" step="0.01" class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-36 focus:outline-none focus:border-blue-400" placeholder="0.00"/></td></tr>
+              <tr><td class="px-5 py-3 text-gray-700">检查化验费（糖尿病相关）</td><td class="px-5 py-3"><input type="number" step="0.01" class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-36 focus:outline-none focus:border-blue-400" placeholder="0.00"/></td></tr>
+              <tr><td class="px-5 py-3 text-gray-700">诊疗服务费（挂号及诊查费）</td><td class="px-5 py-3"><input type="number" step="0.01" class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-36 focus:outline-none focus:border-blue-400" placeholder="0.00"/></td></tr>
+              <tr><td class="px-5 py-3 text-gray-700">糖尿病直接相关耗材（试纸/针头）</td><td class="px-5 py-3"><input type="number" step="0.01" class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-36 focus:outline-none focus:border-blue-400" placeholder="0.00"/></td></tr>
+              <tr><td class="px-5 py-3 text-gray-700">其他</td><td class="px-5 py-3"><input type="number" step="0.01" class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-36 focus:outline-none focus:border-blue-400" placeholder="0.00"/></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: EQ-5D-5L -->
+    <div id="tab-eq5d" class="tab-panel fade-in hidden">
+      <div class="max-w-2xl">
+        <div class="text-xs text-blue-500 bg-blue-50 px-4 py-2 rounded-lg mb-4">请在每个维度中选择最恰当描述您今天健康状况的选项。</div>
+        <div id="eq5d-form"></div>
+        <div class="form-section mt-5">
+          <div class="text-sm font-semibold text-gray-700 mb-2">健康刻度尺评分</div>
+          <p class="text-xs text-gray-500 mb-3">0 = 最差健康状况；100 = 最好健康状况</p>
+          <div class="flex items-center gap-4">
+            <input type="range" id="eq5d-vas" min="0" max="100" value="70" class="w-48 accent-blue-500" oninput="document.getElementById('eq5d-vas-val').textContent=this.value"/>
+            <div class="text-2xl font-bold text-blue-600" id="eq5d-vas-val">70</div>
+            <span class="text-sm text-gray-400">分</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: DTSQ -->
+    <div id="tab-dtsq" class="tab-panel fade-in hidden">
+      <div class="max-w-2xl">
+        <div class="text-xs text-blue-500 bg-blue-50 px-4 py-2 rounded-lg mb-4">糖尿病治疗满意度量表 DTSQ（首次就诊填写）</div>
+        <div id="dtsq-form" class="space-y-4"></div>
+        <div class="form-section mt-5">
+          <div class="text-sm font-semibold text-gray-700 mb-2">开放性问题</div>
+          <label class="text-xs text-gray-500 block mb-1">8. 您对目前的糖尿病治疗方案有哪些建议或改进意见？</label>
+          <textarea class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm h-20 focus:outline-none focus:border-blue-400 resize-none" placeholder="请输入患者的意见…"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: PHQ-9 -->
+    <div id="tab-phq9" class="tab-panel fade-in hidden">
+      <div class="max-w-3xl">
+        <div class="text-xs text-blue-500 bg-blue-50 px-4 py-2 rounded-lg mb-4">过去两周内，以下问题出现的频率（0=完全不会，1=好几天，2=一半以上天数，3=几乎每天）</div>
+        <div class="mb-3">
+          <div class="text-xs text-gray-500 mb-1">就诊主要症状（多选）</div>
+          <div class="flex flex-wrap gap-2">
+            <label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" class="accent-blue-500"/><span>头晕</span></label>
+            <label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" class="accent-blue-500"/><span>头疼</span></label>
+            <label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" class="accent-blue-500"/><span>失眠</span></label>
+            <label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" class="accent-blue-500"/><span>脑血管疾病</span></label>
+            <label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" class="accent-blue-500"/><span>心慌</span></label>
+            <label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" class="accent-blue-500"/><span>胸闷</span></label>
+            <label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" class="accent-blue-500"/><span>胸痛</span></label>
+            <label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" class="accent-blue-500"/><span>其他</span></label>
+          </div>
+        </div>
+        <div id="phq9-table"></div>
+        <div class="mt-4 p-4 bg-gray-50 rounded-xl flex items-center gap-4">
+          <div class="text-sm text-gray-600">PHQ-9 总分</div>
+          <div class="text-3xl font-bold text-blue-600" id="phq9-score">0</div>
+          <div class="text-sm text-gray-400">/ 27</div>
+          <div id="phq9-level" class="score-badge bg-green-100 text-green-700">无抑郁症状</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: GAD-7 -->
+    <div id="tab-gad7" class="tab-panel fade-in hidden">
+      <div class="max-w-3xl">
+        <div class="text-xs text-blue-500 bg-blue-50 px-4 py-2 rounded-lg mb-4">过去两周内，以下问题出现的频率（0=完全不会，1=好几天，2=超过一周，3=几乎每天）</div>
+        <div id="gad7-table"></div>
+        <div class="mt-4 p-4 bg-gray-50 rounded-xl flex items-center gap-4">
+          <div class="text-sm text-gray-600">GAD-7 总分</div>
+          <div class="text-3xl font-bold text-blue-600" id="gad7-score">0</div>
+          <div class="text-sm text-gray-400">/ 21</div>
+          <div id="gad7-level" class="score-badge bg-green-100 text-green-700">无焦虑症状</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: 饮食评估 -->
+    <div id="tab-diet" class="tab-panel fade-in hidden">
+      <div class="max-w-3xl">
+        <div class="text-xs text-blue-500 bg-blue-50 px-4 py-2 rounded-lg mb-4">过去30天饮食习惯评估</div>
+        <div id="diet-table"></div>
+        <div class="mt-4 p-4 bg-gray-50 rounded-xl flex items-center gap-4">
+          <div class="text-sm text-gray-600">饮食习惯总分</div>
+          <div class="text-3xl font-bold text-blue-600" id="diet-score">0</div>
+          <div class="text-sm text-gray-400">/ 100</div>
+          <div id="diet-level" class="score-badge bg-gray-200 text-gray-700">待评估</div>
+        </div>
+        <div class="text-xs text-gray-400 mt-2">评级：25-45分差（黑）/ 46-65分尚可（红）/ 66-85分一般（黄）/ 86-100分良好（绿）</div>
+      </div>
+    </div>
+
+    <!-- TAB: 运动评估 -->
+    <div id="tab-exercise" class="tab-panel fade-in hidden">
+      <div class="max-w-3xl">
+        <div class="text-xs text-blue-500 bg-blue-50 px-4 py-2 rounded-lg mb-4">过去20天运动习惯评估</div>
+        <div id="exercise-table"></div>
+        <div class="mt-4 p-4 bg-gray-50 rounded-xl flex items-center gap-4">
+          <div class="text-sm text-gray-600">运动习惯总分</div>
+          <div class="text-3xl font-bold text-blue-600" id="exercise-score">0</div>
+          <div class="text-sm text-gray-400">/ 50</div>
+          <div id="exercise-level" class="score-badge bg-gray-200 text-gray-700">待评估</div>
+        </div>
+        <div class="text-xs text-gray-400 mt-2">评级：12.5-20分差（黑）/ 21-30分尚可（红）/ 31-40分一般（黄）/ 41-50分良好（绿）</div>
+      </div>
+    </div>
+
+    <!-- TAB: 膳食调查 -->
+    <div id="tab-meal" class="tab-panel fade-in hidden">
+      <div class="max-w-2xl">
+        <div class="text-xs text-blue-500 bg-blue-50 px-4 py-2 rounded-lg mb-4">一日膳食调查记录</div>
+        <div id="meal-form"></div>
+        <div class="form-section mt-5">
+          <div class="text-sm font-semibold text-gray-700 mb-3">不良饮食习惯调查（多选）</div>
+          <div class="grid grid-cols-4 gap-2">
+            <label class="flex items-center gap-1.5 text-sm cursor-pointer p-2 rounded border border-gray-100 hover:border-blue-200"><input type="checkbox" class="accent-blue-500"/><span>不食早餐</span></label>
+            <label class="flex items-center gap-1.5 text-sm cursor-pointer p-2 rounded border border-gray-100 hover:border-blue-200"><input type="checkbox" class="accent-blue-500"/><span>外卖至上</span></label>
+            <label class="flex items-center gap-1.5 text-sm cursor-pointer p-2 rounded border border-gray-100 hover:border-blue-200"><input type="checkbox" class="accent-blue-500"/><span>无肉不欢</span></label>
+            <label class="flex items-center gap-1.5 text-sm cursor-pointer p-2 rounded border border-gray-100 hover:border-blue-200"><input type="checkbox" class="accent-blue-500"/><span>奶茶必点</span></label>
+            <label class="flex items-center gap-1.5 text-sm cursor-pointer p-2 rounded border border-gray-100 hover:border-blue-200"><input type="checkbox" class="accent-blue-500"/><span>餐餐饮酒</span></label>
+            <label class="flex items-center gap-1.5 text-sm cursor-pointer p-2 rounded border border-gray-100 hover:border-blue-200"><input type="checkbox" class="accent-blue-500"/><span>暴饮暴食</span></label>
+            <label class="flex items-center gap-1.5 text-sm cursor-pointer p-2 rounded border border-gray-100 hover:border-blue-200"><input type="checkbox" class="accent-blue-500"/><span>不食果蔬</span></label>
+            <label class="flex items-center gap-1.5 text-sm cursor-pointer p-2 rounded border border-gray-100 hover:border-blue-200"><input type="checkbox" class="accent-blue-500"/><span>喜食宵夜</span></label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    </div><!-- end p-6 -->
+  </div>
+
+  <!-- ===== PAGE: CONSENT ===== -->
+  <div id="page-consent" class="page fade-in p-6">
+    <div class="max-w-2xl">
+      <div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+        <div class="text-base font-semibold text-gray-800 mb-1">知情同意书</div>
+        <div class="text-xs text-gray-400 mb-4">方案名称："三一照护 + 周制剂" 模式下周制剂降糖药的药物经济性与临床价值研究</div>
+        <div class="bg-blue-50 text-blue-700 text-xs px-4 py-2 rounded-lg mb-5">本系统记录知情同意完成情况，纸质原件须另行留存。如需上传扫描件请使用下方上传区。</div>
+        <div class="space-y-5">
+          <div class="form-section"><div class="text-sm font-semibold text-gray-700 mb-3">受试者信息</div>
+            <div class="grid grid-cols-2 gap-4">
+              <div><label class="text-xs text-gray-500 mb-1 block">患者姓名</label><input type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="患者姓名"/></div>
+              <div><label class="text-xs text-gray-500 mb-1 block">患者编号</label><input type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="CHN-017-xxx"/></div>
+              <div><label class="text-xs text-gray-500 mb-1 block">受试者联系方式</label><input type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/></div>
+              <div><label class="text-xs text-gray-500 mb-1 block">知情同意日期</label><input type="date" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/></div>
+            </div>
+          </div>
+          <div class="form-section"><div class="text-sm font-semibold text-gray-700 mb-3">法定代理人（如适用）</div>
+            <div class="grid grid-cols-2 gap-4">
+              <div><label class="text-xs text-gray-500 mb-1 block">法定代理人姓名</label><input type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="如适用填写"/></div>
+              <div><label class="text-xs text-gray-500 mb-1 block">联系方式</label><input type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/></div>
+            </div>
+          </div>
+          <div class="form-section"><div class="text-sm font-semibold text-gray-700 mb-3">独立见证人（如适用）</div>
+            <div class="grid grid-cols-2 gap-4">
+              <div><label class="text-xs text-gray-500 mb-1 block">见证人姓名</label><input type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="如适用填写"/></div>
+              <div><label class="text-xs text-gray-500 mb-1 block">联系方式</label><input type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/></div>
+            </div>
+          </div>
+          <div class="form-section"><div class="text-sm font-semibold text-gray-700 mb-3">研究者信息</div>
+            <div class="grid grid-cols-2 gap-4">
+              <div><label class="text-xs text-gray-500 mb-1 block">研究者姓名</label><input type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" value="陈雨"/></div>
+              <div><label class="text-xs text-gray-500 mb-1 block">签署日期</label><input type="date" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/></div>
+            </div>
+          </div>
+          <!-- Upload -->
+          <div class="form-section">
+            <div class="text-sm font-semibold text-gray-700 mb-3">上传纸质签名扫描件</div>
+            <label class="cursor-pointer">
+              <div class="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-blue-400 hover:bg-blue-50 transition" id="upload-zone">
+                <div class="text-gray-400 text-sm mb-1">点击选择文件或拖拽到此处</div>
+                <div class="text-gray-300 text-xs">支持 JPG、PNG、PDF，单文件不超过 10MB</div>
+                <div id="upload-filename" class="text-blue-600 text-sm mt-2 font-medium"></div>
+              </div>
+              <input type="file" accept=".jpg,.jpeg,.png,.pdf" class="hidden" onchange="handleUpload(this)"/>
+            </label>
+          </div>
+          <div class="flex gap-3 mt-2">
+            <button onclick="submitConsent()" class="bg-blue-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-blue-700 transition">确认并保存</button>
+            <button class="border border-gray-200 text-gray-600 text-sm px-4 py-2 rounded-lg hover:bg-gray-50">取消</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  </div><!-- end main scroll -->
+</main>
+
+<!-- Toast -->
+<div id="toast" class="fixed bottom-6 right-6 bg-gray-900 text-white text-sm px-5 py-3 rounded-xl shadow-lg opacity-0 transition-opacity duration-300 pointer-events-none z-50"></div>
+
+<script>
+// ======= DATA =======
+const patients = [
+  {id:'CHN-017-161',ini:'AZL',sex:'女',age:68,date:'2024-02-24',visits:'基线/M6/M12',status:'已完成'},
+  {id:'CHN-017-160',ini:'QYG',sex:'男',age:55,date:'2024-02-24',visits:'基线',status:'待录入'},
+  {id:'CHN-017-159',ini:'JJ',sex:'女',age:72,date:'2024-02-24',visits:'基线/M6',status:'待签名'},
+  {id:'CHN-017-158',ini:'GJJ',sex:'男',age:61,date:'2024-02-24',visits:'基线',status:'已完成'},
+  {id:'CHN-017-157',ini:'JD',sex:'女',age:58,date:'2024-02-24',visits:'基线',status:'待录入'},
+  {id:'CHN-017-153',ini:'RYL',sex:'男',age:64,date:'2024-02-24',visits:'基线/M6/M12/M18',status:'已完成'},
+  {id:'CHN-017-152',ini:'KFS',sex:'男',age:50,date:'2024-02-24',visits:'基线',status:'待录入'},
+  {id:'CHN-017-151',ini:'XRK',sex:'女',age:77,date:'2024-02-24',visits:'基线/M6',status:'待签名'},
+  {id:'CHN-017-150',ini:'DHZ',sex:'男',age:66,date:'2024-02-24',visits:'基线',status:'已完成'},
+  {id:'CHN-017-149',ini:'FFS',sex:'女',age:59,date:'2024-02-24',visits:'基线/M6/M12',status:'已完成'},
+];
+
+const statusColor = {
+  '已完成':'bg-green-100 text-green-700',
+  '待录入':'bg-orange-100 text-orange-700',
+  '待签名':'bg-blue-100 text-blue-700',
+};
+
+// ======= INIT =======
+document.addEventListener('DOMContentLoaded', () => {
+  renderPatients();
+  renderComorbidities();
+  renderEQ5D();
+  renderDTSQ();
+  buildLikertTable('phq9-table', phq9Items, 'phq9', ['完全不会(0)','好几天(1)','一半以上天数(2)','几乎每天(3)'], calcPHQ9);
+  buildLikertTable('gad7-table', gad7Items, 'gad7', ['完全不会(0)','好几天(1)','超过一周(2)','几乎每天(3)'], calcGAD7);
+  buildDietTable();
+  buildExerciseTable();
+  buildMealForm();
+});
+
+// ======= NAVIGATION =======
+function showPage(name, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.getElementById('page-' + name).classList.add('fade-in');
+  document.querySelectorAll('.sidebar-item').forEach(s => s.classList.remove('active','text-white'));
+  if(el) { el.classList.add('active'); el.style.color='white'; }
+  const titles = {dashboard:'概况', patients:'患者管理', entry:'数据录入 · CHN-017-161', consent:'知情同意书'};
+  document.getElementById('page-title').textContent = titles[name] || name;
+}
+
+function switchTab(name, el) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.remove('hidden');
+  el.classList.add('active');
+}
+
+// ======= PATIENTS TABLE =======
+function renderPatients() {
+  const tbody = document.getElementById('patient-table');
+  tbody.innerHTML = patients.map(p => `
+    <tr class="hover:bg-blue-50/40 cursor-pointer border-t border-gray-50">
+      <td class="px-5 py-3 font-mono text-blue-600 text-sm">${p.id}</td>
+      <td class="px-4 py-3 text-sm">${p.ini}</td>
+      <td class="px-4 py-3 text-sm">${p.sex}</td>
+      <td class="px-4 py-3 text-sm">${p.age}</td>
+      <td class="px-4 py-3 text-sm">${p.date}</td>
+      <td class="px-4 py-3 text-xs text-gray-500">${p.visits}</td>
+      <td class="px-4 py-3"><span class="score-badge ${statusColor[p.status]}">${p.status}</span></td>
+      <td class="px-4 py-3"><button onclick="showPage('entry',document.querySelectorAll('.sidebar-item')[2])" class="text-blue-500 text-xs hover:underline">录入</button></td>
+    </tr>`).join('');
+}
+
+// ======= BMI =======
+function calcBMI() {
+  const inputs = document.querySelectorAll('#tab-basic input[type=number]');
+  const h = parseFloat(inputs[0].value), w = parseFloat(inputs[1].value);
+  const el = document.getElementById('bmi-display');
+  if(h > 0 && w > 0) el.value = (w / ((h/100)**2)).toFixed(1);
+  else el.value = '';
+}
+
+// ======= COMORBIDITIES =======
+function renderComorbidities() {
+  const items = [
+    {label:'高血压病史'}, {label:'慢性肾脏病史'}, {label:'冠心病'},
+    {label:'心绞痛'}, {label:'心肌梗死'}, {label:'脑卒中'},
+  ];
+  document.getElementById('comorbidity-list').innerHTML = `
+    <div class="form-section"><div class="text-sm font-semibold text-gray-700 mb-3">心血管及相关病史</div>
+    <div class="space-y-3">${items.map((it,i) => `
+      <div class="flex items-center gap-4 py-2 border-b border-gray-50">
+        <div class="w-36 text-sm text-gray-700 flex-shrink-0">${it.label}</div>
+        <div class="radio-group flex gap-2">
+          <label><input type="radio" name="co_${i}" value="0"/><span>无</span></label>
+          <label><input type="radio" name="co_${i}" value="1"/><span>有</span></label>
+        </div>
+        <input type="text" class="border border-gray-200 rounded-lg px-2 py-1 text-xs w-32 focus:outline-none focus:border-blue-400" placeholder="诊断时间（年/月）"/>
+      </div>`).join('')}</div></div>`;
+
+  const dmItems = [
+    {label:'糖尿病视网膜病变', subs:['黄斑病变','非增殖性','增殖性']},
+    {label:'糖尿病神经病变', subs:['周围神经病变','自主神经病变']},
+    {label:'糖尿病足', subs:['既往愈合溃疡','活动性溃疡']},
+  ];
+  document.getElementById('dm-complication-list').innerHTML = dmItems.map((it,i) => `
+    <div class="py-2 border-b border-gray-50">
+      <div class="flex items-center gap-4 mb-2">
+        <div class="w-36 text-sm text-gray-700 flex-shrink-0">${it.label}</div>
+        <div class="radio-group flex gap-2">
+          <label><input type="radio" name="dm_${i}" value="0"/><span>无</span></label>
+          <label><input type="radio" name="dm_${i}" value="1"/><span>有</span></label>
+        </div>
+        <input type="text" class="border border-gray-200 rounded-lg px-2 py-1 text-xs w-32 focus:outline-none focus:border-blue-400" placeholder="诊断时间"/>
+      </div>
+      <div class="ml-40 flex flex-wrap gap-2">${it.subs.map(s => `<label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" class="accent-blue-500"/><span>${s}</span></label>`).join('')}</div>
+    </div>`).join('');
+}
+
+// ======= EQ5D =======
+const eq5dDims = [
+  {label:'1. 行动能力', opts:['我四处走动没有任何困难','我四处走动有一点困难','我四处走动有中度困难','我四处走动有严重困难','我无法四处走动']},
+  {label:'2. 自己照顾自己', opts:['我自己洗澡或穿衣没有困难','我自己洗澡或穿衣有一点困难','我自己洗澡或穿衣有中度困难','我自己洗澡或穿衣有严重困难','我无法自己洗澡或穿衣']},
+  {label:'3. 日常活动', opts:['我进行日常活动没有困难','我进行日常活动有一点困难','我进行日常活动有中度困难','我进行日常活动有严重困难','我无法进行日常活动']},
+  {label:'4. 疼痛/不舒服', opts:['我没有任何疼痛或不舒服','我有一点疼痛或不舒服','我有中度的疼痛或不舒服','我有严重的疼痛或不舒服','我有非常严重的疼痛或不舒服']},
+  {label:'5. 焦虑或沮丧', opts:['我没有焦虑或沮丧','我有一点焦虑或沮丧','我有中度焦虑或沮丧','我有严重的焦虑或沮丧','我有非常严重的焦虑或沮丧']},
+];
+function renderEQ5D() {
+  document.getElementById('eq5d-form').innerHTML = eq5dDims.map((dim,i) => `
+    <div class="form-section mb-4">
+      <div class="text-sm font-semibold text-gray-700 mb-2">${dim.label}</div>
+      <div class="space-y-1">${dim.opts.map((opt,j) => `
+        <label class="flex items-center gap-2 cursor-pointer text-sm py-1 px-2 rounded hover:bg-blue-50">
+          <input type="radio" name="eq5d_${i}" value="${j+1}" class="accent-blue-500 flex-shrink-0"/><span>${opt}</span>
+        </label>`).join('')}
+      </div>
+    </div>`).join('');
+}
+
+// ======= DTSQ =======
+const dtsqItems = [
+  '1. 总体而言，您对目前的糖尿病治疗方案满意吗？',
+  '2. 您认为目前的治疗方案在控制血糖方面效果如何？',
+  '3. 您是否因治疗方案带来的不便而感到困扰？（如注射次数、服药频率等）',
+  '4. 您对治疗方案的灵活性满意吗？（如调整剂量、适应生活方式变化的能力）',
+  '5. 您是否担心治疗方案的不良反应（如低血糖、体重增加等）？',
+  '6. 您认为目前的治疗方案对日常生活的干扰程度如何？',
+  '7. 如果可以重新选择，您是否愿意继续使用目前的治疗方案？',
+  '9. 您对治疗方案的费用负担满意吗？',
+  '10. 您认为治疗方案的学习和操作难度如何？',
+];
+const dtsqOpts = ['非常不满意/极度困扰/极度担心/严重干扰/绝对不愿意/非常困难', '比较不满意/比较困扰/比较担心/比较干扰/不太愿意/比较困难', '一般/轻微', '比较满意/几乎不困扰/几乎不担心/几乎不干扰/比较愿意/比较容易', '非常满意/完全不困扰/完全不担心/完全不干扰/绝对愿意/非常容易'];
+
+function renderDTSQ() {
+  document.getElementById('dtsq-form').innerHTML = dtsqItems.map((q,i) => `
+    <div class="form-section py-2">
+      <div class="text-sm text-gray-700 mb-2">${q}</div>
+      <div class="flex flex-wrap gap-2">
+        ${['1','2','3','4','5'].map((v,j) => {
+          const labels = [['非常不满意','极度困扰','极度担心','严重干扰','绝对不愿意','非常困难'],['比较不满意','比较困扰','比较担心','比较干扰','不太愿意','比较困难'],['一般','轻微困扰','轻微担心','轻微干扰','不确定','一般'],['比较满意','几乎不困扰','几乎不担心','几乎不干扰','比较愿意','比较容易'],['非常满意','完全不困扰','完全不担心','完全不干扰','绝对愿意','非常容易']];
+          return `<label class="flex items-center gap-1.5 text-xs cursor-pointer px-3 py-1.5 rounded-lg border border-gray-200 hover:border-blue-400 hover:bg-blue-50">
+            <input type="radio" name="dtsq_${i}" value="${v}" class="accent-blue-500"/>
+            <span>${v}级</span>
+          </label>`;
+        }).join('')}
+      </div>
+    </div>`).join('');
+}
+
+// ======= PHQ-9 =======
+const phq9Items = [
+  '做事时提不起劲或没有兴趣',
+  '感到心情低落、沮丧或绝望',
+  '入睡困难、睡不安稳或睡眠过多',
+  '感到疲惫或没有活力',
+  '食欲不振或吃太多',
+  '感觉自己很糟，觉得自己很失败或让自己失望',
+  '做事专注有困难，例如阅读报纸和看电视时',
+  '感到说话速度缓慢，或烦躁坐立不安动来动去',
+  '有不如死掉或用某种方式伤害自己的念头',
+];
+
+// ======= GAD-7 =======
+const gad7Items = [
+  '感到紧张、焦虑或急切',
+  '不能停止或控制担忧',
+  '对各种各样的事情担忧过多',
+  '很难放松下来',
+  '由于不安而无法静坐',
+  '变得容易急躁',
+  '感到似乎有可怕的事情发生而害怕',
+];
+
+function buildLikertTable(containerId, items, prefix, headers, calcFn) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = `<div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+    <table class="w-full likert-table">
+      <thead><tr>
+        <th class="text-left px-4 py-3 w-2/5">题目</th>
+        ${headers.map(h => `<th>${h}</th>`).join('')}
+      </tr></thead>
+      <tbody>${items.map((q,i) => `<tr>
+        <td class="text-left px-4 text-gray-700">${q}</td>
+        ${[0,1,2,3].map(v => `<td><input type="radio" name="${prefix}_${i}" value="${v}" class="accent-blue-500" onchange="${calcFn.name}()"/></td>`).join('')}
+      </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+}
+
+function calcPHQ9() {
+  let total = 0;
+  phq9Items.forEach((_,i) => {
+    const sel = document.querySelector(`input[name="phq9_${i}"]:checked`);
+    if(sel) total += parseInt(sel.value);
+  });
+  document.getElementById('phq9-score').textContent = total;
+  const el = document.getElementById('phq9-level');
+  if(total <= 4) { el.className='score-badge bg-green-100 text-green-700'; el.textContent='无/极轻微'; }
+  else if(total <= 9) { el.className='score-badge bg-yellow-100 text-yellow-700'; el.textContent='轻度抑郁'; }
+  else if(total <= 14) { el.className='score-badge bg-orange-100 text-orange-700'; el.textContent='中度抑郁'; }
+  else if(total <= 19) { el.className='score-badge bg-red-100 text-red-700'; el.textContent='中重度抑郁'; }
+  else { el.className='score-badge bg-red-200 text-red-800'; el.textContent='重度抑郁'; }
+}
+
+function calcGAD7() {
+  let total = 0;
+  gad7Items.forEach((_,i) => {
+    const sel = document.querySelector(`input[name="gad7_${i}"]:checked`);
+    if(sel) total += parseInt(sel.value);
+  });
+  document.getElementById('gad7-score').textContent = total;
+  const el = document.getElementById('gad7-level');
+  if(total <= 4) { el.className='score-badge bg-green-100 text-green-700'; el.textContent='无焦虑症状'; }
+  else if(total <= 9) { el.className='score-badge bg-yellow-100 text-yellow-700'; el.textContent='轻度焦虑'; }
+  else if(total <= 14) { el.className='score-badge bg-orange-100 text-orange-700'; el.textContent='中度焦虑'; }
+  else { el.className='score-badge bg-red-100 text-red-700'; el.textContent='重度焦虑'; }
+}
+
+// ======= DIET =======
+const dietItems = [
+  {q:'我吃粗粮和全谷物食品（燕麦、全麦等）', scores:[2.5,5,7.5,10], positive:true},
+  {q:'我吃鱼虾', scores:[2.5,5,7.5,10], positive:true},
+  {q:'我喝牛奶/酸奶', scores:[2.5,5,7.5,10], positive:true},
+  {q:'我吃豆类', scores:[2.5,5,7.5,10], positive:true},
+  {q:'我每天吃5种以上的蔬菜', scores:[2.5,5,7.5,10], positive:true},
+  {q:'我吃加工肉（香肠、培根熏肉等）', scores:[10,7.5,5,2.5], positive:false},
+  {q:'我吃腌制食品', scores:[10,7.5,5,2.5], positive:false},
+  {q:'我吃油炸食品', scores:[10,7.5,5,2.5], positive:false},
+  {q:'我吃比较咸的食物', scores:[10,7.5,5,2.5], positive:false},
+  {q:'我吃比较甜的食物', scores:[10,7.5,5,2.5], positive:false},
+];
+
+function buildDietTable() {
+  const container = document.getElementById('diet-table');
+  container.innerHTML = `<div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+    <table class="w-full likert-table">
+      <thead><tr>
+        <th class="text-left px-4 py-3 w-2/5">饮食习惯（过去30天）</th>
+        <th>从不</th><th>偶尔</th><th>经常</th><th>几乎每天</th>
+      </tr></thead>
+      <tbody>${dietItems.map((it,i) => `<tr>
+        <td class="text-left px-4 text-gray-700 text-xs">${it.q}</td>
+        ${[0,1,2,3].map(j => `<td>
+          <div class="flex flex-col items-center gap-0.5">
+            <input type="radio" name="diet_${i}" value="${it.scores[j]}" class="accent-blue-500" onchange="calcDiet()"/>
+            <span class="text-xs text-gray-400">${it.scores[j]}</span>
+          </div></td>`).join('')}
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+
+function calcDiet() {
+  let total = 0;
+  dietItems.forEach((_,i) => {
+    const sel = document.querySelector(`input[name="diet_${i}"]:checked`);
+    if(sel) total += parseFloat(sel.value);
+  });
+  document.getElementById('diet-score').textContent = total.toFixed(1);
+  const el = document.getElementById('diet-level');
+  if(total <= 45) { el.className='score-badge bg-gray-800 text-white'; el.textContent='饮食习惯差'; }
+  else if(total <= 65) { el.className='score-badge bg-red-100 text-red-700'; el.textContent='饮食习惯尚可'; }
+  else if(total <= 85) { el.className='score-badge bg-yellow-100 text-yellow-700'; el.textContent='饮食习惯一般'; }
+  else { el.className='score-badge bg-green-100 text-green-700'; el.textContent='饮食习惯良好'; }
+}
+
+// ======= EXERCISE =======
+const exerciseItems = [
+  {q:'一般开车或乘车出行', scores:[10,7.5,5,2.5], cols:['从不','偶尔1-2天/周','经常3-4天/周','几乎每天5-7天/周']},
+  {q:'白天连续4、5小时坐着办公', scores:[10,7.5,5,2.5], cols:['从不','偶尔','经常','几乎每天']},
+  {q:'每天连续看电视、手机屏幕超过2小时', scores:[10,7.5,5,2.5], cols:['从不','偶尔','经常','几乎每天']},
+  {q:'每天出门散步半小时以上', scores:[2.5,5,7.5,10], cols:['从不','偶尔','经常','几乎每天']},
+  {q:'每天主动参加活动或锻炼', scores:[2.5,5,7.5,10], cols:['从不','偶尔','经常','几乎每天']},
+];
+
+function buildExerciseTable() {
+  const container = document.getElementById('exercise-table');
+  container.innerHTML = `<div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+    <table class="w-full likert-table">
+      <thead><tr>
+        <th class="text-left px-4 py-3 w-2/5">运动习惯（过去20天）</th>
+        <th>从不</th><th>偶尔</th><th>经常</th><th>几乎每天</th>
+      </tr></thead>
+      <tbody>${exerciseItems.map((it,i) => `<tr>
+        <td class="text-left px-4 text-gray-700 text-xs">${it.q}</td>
+        ${[0,1,2,3].map(j => `<td>
+          <div class="flex flex-col items-center gap-0.5">
+            <input type="radio" name="ex_${i}" value="${it.scores[j]}" class="accent-blue-500" onchange="calcExercise()"/>
+            <span class="text-xs text-gray-400">${it.scores[j]}</span>
+          </div></td>`).join('')}
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+
+function calcExercise() {
+  let total = 0;
+  exerciseItems.forEach((_,i) => {
+    const sel = document.querySelector(`input[name="ex_${i}"]:checked`);
+    if(sel) total += parseFloat(sel.value);
+  });
+  document.getElementById('exercise-score').textContent = total.toFixed(1);
+  const el = document.getElementById('exercise-level');
+  if(total <= 20) { el.className='score-badge bg-gray-800 text-white'; el.textContent='运动习惯差'; }
+  else if(total <= 30) { el.className='score-badge bg-red-100 text-red-700'; el.textContent='运动习惯尚可'; }
+  else if(total <= 40) { el.className='score-badge bg-yellow-100 text-yellow-700'; el.textContent='运动习惯一般'; }
+  else { el.className='score-badge bg-green-100 text-green-700'; el.textContent='运动习惯良好'; }
+}
+
+// ======= MEAL =======
+const mealTimes = [
+  {label:'早餐', rows:3},
+  {label:'早加餐', rows:2},
+  {label:'午餐', rows:3},
+  {label:'午加餐', rows:2},
+  {label:'晚餐', rows:3},
+  {label:'晚加餐', rows:2},
+];
+function buildMealForm() {
+  const container = document.getElementById('meal-form');
+  container.innerHTML = `<div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+    <table class="w-full">
+      <thead><tr class="bg-gray-50 text-xs text-gray-500">
+        <th class="px-4 py-3 text-left font-semibold w-16">餐饮</th>
+        <th class="px-4 py-3 text-left font-semibold">菜肴名称</th>
+        <th class="px-4 py-3 text-left font-semibold">食物成分</th>
+        <th class="px-4 py-3 text-left font-semibold w-20">生/熟</th>
+        <th class="px-4 py-3 text-left font-semibold w-24">食物估量</th>
+      </tr></thead>
+      <tbody class="divide-y divide-gray-50">${mealTimes.map(m => {
+        return Array.from({length:m.rows}).map((_, ri) => `<tr>
+          ${ri===0 ? `<td class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-50/50" rowspan="${m.rows}">${m.label}</td>` : ''}
+          <td class="px-4 py-2"><input type="text" class="border border-gray-100 rounded px-2 py-1 text-xs w-full focus:outline-none focus:border-blue-300"/></td>
+          <td class="px-4 py-2"><input type="text" class="border border-gray-100 rounded px-2 py-1 text-xs w-full focus:outline-none focus:border-blue-300"/></td>
+          <td class="px-4 py-2"><select class="border border-gray-100 rounded px-1 py-1 text-xs focus:outline-none focus:border-blue-300"><option>生</option><option>熟</option></select></td>
+          <td class="px-4 py-2"><input type="text" class="border border-gray-100 rounded px-2 py-1 text-xs w-full focus:outline-none focus:border-blue-300" placeholder="g/ml"/></td>
+        </tr>`).join('');
+      }).join('')}</tbody>
+    </table></div>`;
+}
+
+// ======= MEDICATION =======
+let medRowCount = 1;
+function addMedRow() {
+  const template = document.getElementById('med-row-template').cloneNode(true);
+  template.id = 'med-row-' + (++medRowCount);
+  document.getElementById('med-table-body').appendChild(template);
+}
+function removeMedRow(btn) {
+  const row = btn.closest('tr');
+  if(document.querySelectorAll('#med-table-body tr').length > 1) row.remove();
+  else showToast('至少保留一行药物记录');
+}
+
+// ======= UPLOAD =======
+function handleUpload(input) {
+  if(input.files.length > 0) {
+    document.getElementById('upload-filename').textContent = '已选择：' + input.files[0].name;
+    document.getElementById('upload-zone').classList.add('border-blue-400','bg-blue-50');
+  }
+}
+
+// ======= SUBMIT =======
+function submitForm() { showToast('✓ 表单已提交，等待签名确认'); }
+function submitConsent() { showToast('✓ 知情同意记录已保存'); }
+
+// ======= TOAST =======
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.opacity = '1';
+  setTimeout(() => el.style.opacity = '0', 2500);
+}
+</script>
+<script>window.parent.postMessage({ action: "ready" }, "*"); 
+ 
+window.console = new Proxy(console, {
+  get(target, prop) {
+    if (['log', 'warn', 'error'].includes(prop)) {
+      return new Proxy(target[prop], {
+        apply(fn, thisArg, args) {
+          fn.apply(thisArg, args);
+          window.parent.postMessage({ action: 'console', 
+            type: prop, 
+            args: args.map((arg) => {
+              try {
+                return JSON.stringify(arg).replace(/^["']|["']$/g, '');
+              } catch (e) {
+                return arg;
+              }
+            }) 
+          }, '*');
+        }
+      });
+    }
+    return target[prop];
+  }
+});
+</script></body>
+</html>
