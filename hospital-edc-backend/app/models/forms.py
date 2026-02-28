@@ -99,3 +99,5 @@ class CostIndicator(Base):
     other_cost = Column(Float, default=0)
 
     visit = relationship("Visit", back_populates="cost_indicators")
+
+    visit = relationship("Visit", back_populates="cost_indicators")

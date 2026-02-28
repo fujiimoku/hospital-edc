@@ -1,59 +1,114 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, List
 from app.database import get_db
 from app.models.patient import Patient
+from app.models.visit import Visit
+from app.schemas.patient import PatientCreate, PatientUpdate, PatientOut
 from app.dependencies import get_current_user
 
 router = APIRouter(prefix="/api/patients", tags=["患者管理"])
 
-@router.get("/")
+
+@router.get("/", response_model=dict)
 def list_patients(
     skip: int = 0,
     limit: int = 20,
-    search: Optional[str] = Query(None),   # 按编号或首字母搜索
-    status: Optional[str] = Query(None),
+    search: Optional[str] = Query(None, description="按患者编号或姓名首字母搜索"),
+    status: Optional[str] = Query(None, description="enrolled | withdrawn | completed"),
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user=Depends(get_current_user),
 ):
     query = db.query(Patient)
     if search:
         query = query.filter(
-            Patient.patient_code.contains(search) |
-            Patient.name_initials.contains(search)
+            Patient.patient_code.contains(search)
+            | Patient.name_initials.contains(search)
         )
     if status:
         query = query.filter(Patient.status == status)
     total = query.count()
-    patients = query.order_by(Patient.id.desc()).offset(skip).limit(limit).all()
-    return {"total": total, "items": patients}
+    items = query.order_by(Patient.id.desc()).offset(skip).limit(limit).all()
+    return {"total": total, "items": [PatientOut.model_validate(p).model_dump() for p in items]}
 
-@router.post("/")
-def create_patient(data: dict, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
-    # 自动生成患者编号
+
+@router.post("/", response_model=PatientOut)
+def create_patient(
+    data: PatientCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    # 自动生成患者编号：取当前最大 id+1
     last = db.query(Patient).order_by(Patient.id.desc()).first()
     next_num = (last.id + 1) if last else 1
-    code = f"CHN-017-{next_num:03d}"
+    code = f"{data.center_code}-{next_num:03d}"
 
-    patient = Patient(**data, patient_code=code, created_by=current_user.id)
+    patient = Patient(
+        **data.model_dump(exclude={"center_code"}),
+        patient_code=code,
+        center_code=data.center_code,
+        created_by=current_user.id,
+    )
     db.add(patient)
     db.commit()
     db.refresh(patient)
     return patient
 
-@router.get("/{patient_id}")
-def get_patient(patient_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+
+@router.get("/stats")
+def get_stats(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """首页概况统计"""
+    total = db.query(Patient).count()
+    enrolled = db.query(Patient).filter(Patient.status == "enrolled").count()
+    # draft 访视 = 待录入；submitted = 待签名
+    pending_entry = db.query(Visit).filter(Visit.status == "draft").count()
+    pending_sign = db.query(Visit).filter(Visit.status == "submitted").count()
+    return {
+        "total_patients": total,
+        "enrolled": enrolled,
+        "pending_entry": pending_entry,
+        "pending_sign": pending_sign,
+    }
+
+
+@router.get("/{patient_id}", response_model=PatientOut)
+def get_patient(
+    patient_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
     patient = db.query(Patient).filter(Patient.id == patient_id).first()
     if not patient:
         raise HTTPException(404, "患者不存在")
     return patient
 
-@router.put("/{patient_id}")
-def update_patient(patient_id: int, data: dict, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+
+@router.put("/{patient_id}", response_model=PatientOut)
+def update_patient(
+    patient_id: int,
+    data: PatientUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
     patient = db.query(Patient).filter(Patient.id == patient_id).first()
     if not patient:
         raise HTTPException(404, "患者不存在")
-    for key, value in data.items():
+    for key, value in data.model_dump(exclude_unset=True).items():
         setattr(patient, key, value)
     db.commit()
+    db.refresh(patient)
     return patient
+
+
+@router.delete("/{patient_id}")
+def delete_patient(
+    patient_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    patient = db.query(Patient).filter(Patient.id == patient_id).first()
+    if not patient:
+        raise HTTPException(404, "患者不存在")
+    patient.status = "withdrawn"
+    db.commit()
+    return {"message": "患者已标记为退出"}
