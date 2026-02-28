@@ -9,7 +9,7 @@ from alembic import context
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.config import settings
-from app.database import Base
+from app.database import Base, engine
 
 # 导入所有 Model，确保 Alembic 能感知到全部表
 from app.models import (  # noqa: F401
@@ -42,12 +42,7 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
-    with connectable.connect() as connection:
+    with engine.connect() as connection:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
