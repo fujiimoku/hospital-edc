@@ -22,11 +22,11 @@ def on_startup():
     except Exception as e:
         print(f"[WARN] 自动建表失败（数据库未就绪？）: {e}")
 
-# 允许前端跨域访问（开发阶段）
+# 允许前端跨域访问（开发阶段：允许所有来源，含 file:// 本地打开）
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
