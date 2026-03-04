@@ -46,6 +46,10 @@ class PatientOut(BaseModel):
     consent_date: Optional[date]
     enrollment_date: Optional[date]
     status: Optional[str]
+    # 录入状态（由后端计算，便于前端展示/禁用入口）
+    has_submitted: bool = False
+    has_consent: bool = False
+    latest_visit_status: Optional[str] = None
     created_at: Optional[datetime]
 
     model_config = {"from_attributes": True}

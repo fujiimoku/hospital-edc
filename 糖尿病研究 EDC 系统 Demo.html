@@ -91,6 +91,9 @@
     <div class="sidebar-item rounded-lg px-3 py-2 flex items-center gap-2.5 text-sm cursor-pointer text-gray-600" onclick="showPage('consent',this)">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>知情同意
     </div>
+    <div class="sidebar-item rounded-lg px-3 py-2 flex items-center gap-2.5 text-sm cursor-pointer text-gray-600" onclick="showPage('recorded',this)">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V9m-7-4h2a2 2 0 012 2v2m-6 4h6m-6 4h6"/></svg>已录入患者
+    </div>
   </nav>
   <div class="px-4 py-3 border-t border-gray-100 bg-gray-50">
     <div class="text-xs text-gray-500">当前账号</div>
@@ -191,6 +194,31 @@
         </tbody>
       </table>
       <div id="patient-list-footer" class="px-5 py-3 text-xs text-gray-400 border-t border-gray-100">—</div>
+    </div>
+  </div>
+
+  <!-- ===== PAGE: RECORDED PATIENTS ===== -->
+  <div id="page-recorded" class="page fade-in p-6">
+    <div class="bg-white rounded-xl border border-gray-100 shadow-sm">
+      <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <span id="recorded-list-title" class="font-semibold text-gray-700">已录入患者</span>
+        <div class="text-xs text-gray-400">从这里进入可修改已提交数据</div>
+      </div>
+      <table class="w-full">
+        <thead><tr class="bg-gray-50 text-xs text-gray-500">
+          <th class="px-5 py-3 text-left font-semibold">患者编号</th>
+          <th class="px-4 py-3 text-left font-semibold">姓名首字母</th>
+          <th class="px-4 py-3 text-left font-semibold">性别</th>
+          <th class="px-4 py-3 text-left font-semibold">年龄</th>
+          <th class="px-4 py-3 text-left font-semibold">入组日期</th>
+          <th class="px-4 py-3 text-left font-semibold">最新访视状态</th>
+          <th class="px-4 py-3 text-left font-semibold">操作</th>
+        </tr></thead>
+        <tbody id="recorded-table" class="text-sm text-gray-700 divide-y divide-gray-50">
+          <tr><td colspan="7" class="px-5 py-6 text-center text-gray-400 text-sm">加载中…</td></tr>
+        </tbody>
+      </table>
+      <div id="recorded-list-footer" class="px-5 py-3 text-xs text-gray-400 border-t border-gray-100">—</div>
     </div>
   </div>
 
@@ -808,11 +836,12 @@ function showPage(name, el) {
   document.getElementById('page-' + name).classList.add('fade-in');
   document.querySelectorAll('.sidebar-item').forEach(s => { s.classList.remove('active','text-white'); s.style.color=''; });
   if(el) { el.classList.add('active'); el.style.color='white'; }
-  const titles = {dashboard:'概况', patients:'患者管理', entry:'数据录入', consent:'知情同意书'};
+  const titles = {dashboard:'概况', patients:'患者管理', entry:'数据录入', consent:'知情同意书', recorded:'已录入患者'};
   document.getElementById('page-title').textContent = titles[name] || name;
   if (name === 'patients') loadPatients();
   if (name === 'dashboard') loadDashboard();
   if (name === 'consent') loadConsent();
+  if (name === 'recorded') loadRecordedPatients();
 }
 
 function switchTab(name, el) {
@@ -827,6 +856,8 @@ let patientSearchTimer = null;
 let currentPatientId = null;
 let currentPatient = null;
 let patientCacheById = {};
+let entryManageMode = false;
+let currentVisitStatus = null;
 
 const genderLabel = { male: '男', female: '女' };
 const statusColorApi = {
@@ -866,6 +897,11 @@ function renderPatientTable(items, total) {
     const statusCls = statusColorApi[p.status] || 'bg-gray-100 text-gray-500';
     const statusTxt = statusLabelApi[p.status] || p.status || '未知';
     const enroll = p.enrollment_date ? p.enrollment_date.slice(0,10) : '—';
+    const locked = !!p.has_submitted;
+    const btnCls = locked ? 'text-gray-300 text-xs cursor-not-allowed' : 'text-blue-500 text-xs hover:underline';
+    const btnAttr = locked
+      ? 'disabled title="该患者已提交，请到【已录入患者】管理界面更改"'
+      : `onclick="selectPatient(${p.id})"`;
     return `<tr class="hover:bg-blue-50/40 cursor-pointer border-t border-gray-50">
       <td class="px-5 py-3 font-mono text-blue-600 text-sm">${p.patient_code}</td>
       <td class="px-4 py-3 text-sm">${p.name_initials || '—'}</td>
@@ -874,7 +910,7 @@ function renderPatientTable(items, total) {
       <td class="px-4 py-3 text-sm">${enroll}</td>
       <td class="px-4 py-3 text-xs text-gray-500">—</td>
       <td class="px-4 py-3"><span class="score-badge ${statusCls}">${statusTxt}</span></td>
-      <td class="px-4 py-3"><button onclick="selectPatient(${p.id})" class="text-blue-500 text-xs hover:underline">录入</button></td>
+      <td class="px-4 py-3"><button ${btnAttr} class="${btnCls}">录入</button></td>
     </tr>`;
   }).join('');
 }
@@ -884,7 +920,8 @@ function onPatientSearch(val) {
   patientSearchTimer = setTimeout(() => loadPatients(val), 350);
 }
 
-async function selectPatient(id) {
+async function selectPatient(id, manage) {
+  entryManageMode = !!manage;
   // 切换到录入页，记录当前患者
   let patient = null;
   const p = patientCacheById ? patientCacheById[id] : null;
@@ -945,6 +982,10 @@ async function selectPatient(id) {
   loadVisitData(id);
 }
 
+async function managePatient(id) {
+  await selectPatient(id, true);
+}
+
 async function loadVisitData(patientId) {
   const tabsEl = document.getElementById('visit-tabs');
   const newBtn = document.getElementById('visit-new-btn');
@@ -957,7 +998,24 @@ async function loadVisitData(patientId) {
     } else {
       // 无访视，提示新建
       currentVisitId = null;
+      currentVisitStatus = null;
       tabsEl.innerHTML = '<span class="text-xs text-gray-400">暂无访视记录</span>';
+
+      // 切换到“无访视”状态时，必须清空并解除上一个患者/访视的锁定残留
+      clearAllForms();
+      const dateInput = document.getElementById('visit-date-input');
+      const dateLabel = document.getElementById('visit-date-label');
+      const statusBadge = document.getElementById('visit-status-badge');
+      if (dateInput) { dateInput.value = ''; dateInput.classList.add('hidden'); }
+      if (dateLabel) dateLabel.classList.add('hidden');
+      if (statusBadge) statusBadge.classList.add('hidden');
+      document.querySelectorAll('#page-entry input, #page-entry select, #page-entry textarea').forEach(el => {
+        el.disabled = false;
+      });
+      const saveBtn = document.querySelector('button[onclick="saveDraft()"]');
+      const submitBtn = document.querySelector('button[onclick="submitVisit()"]');
+      if (saveBtn) saveBtn.disabled = false;
+      if (submitBtn) submitBtn.disabled = false;
     }
     if (newBtn) newBtn.classList.remove('hidden');
   } catch(e) {
@@ -1018,6 +1076,7 @@ async function switchVisit(visitId, visitsCache) {
   }
   // 更新日期和状态显示
   if (visit) {
+    currentVisitStatus = visit.status;
     const dateInput = document.getElementById('visit-date-input');
     const dateLabel = document.getElementById('visit-date-label');
     const statusBadge = document.getElementById('visit-status-badge');
@@ -1029,8 +1088,10 @@ async function switchVisit(visitId, visitsCache) {
       statusBadge.className = 'score-badge text-xs ' + st.cls;
       statusBadge.classList.remove('hidden');
     }
-    // 锁定访视禁用编辑
-    const isLocked = visit.status === 'locked' || visit.status === 'signed';
+    // 锁定访视禁用编辑（已提交默认禁止从“录入”入口修改；仅允许从“已录入患者”管理界面修改）
+    const isLocked = visit.status === 'locked'
+      || visit.status === 'signed'
+      || (visit.status === 'submitted' && !entryManageMode);
     document.querySelectorAll('#page-entry input, #page-entry select, #page-entry textarea').forEach(el => {
       el.disabled = isLocked;
     });
@@ -1147,6 +1208,11 @@ async function loadDashboard() {
       const statusCls = statusColorApi[p.status] || 'bg-gray-100 text-gray-500';
       const statusTxt = statusLabelApi[p.status] || '未知';
       const enroll = p.enrollment_date ? p.enrollment_date.slice(0,10) : '—';
+      const locked = !!p.has_submitted;
+      const btnCls = locked ? 'text-gray-300 text-xs cursor-not-allowed' : 'text-blue-500 text-xs hover:underline';
+      const btnAttr = locked
+        ? 'disabled title="该患者已提交，请到【已录入患者】管理界面更改"'
+        : `onclick="selectPatient(${p.id})"`;
       return `<tr class="hover:bg-blue-50/40 cursor-pointer">
         <td class="px-5 py-3 font-mono text-blue-600">${p.patient_code}</td>
         <td class="px-4 py-3">${p.name_initials || '—'}</td>
@@ -1154,10 +1220,84 @@ async function loadDashboard() {
         <td class="px-4 py-3">${p.age || '—'}</td>
         <td class="px-4 py-3">${enroll}</td>
         <td class="px-4 py-3"><span class="score-badge ${statusCls}">${statusTxt}</span></td>
-        <td class="px-4 py-3"><button onclick="selectPatient(${p.id})" class="text-blue-500 text-xs hover:underline">录入</button></td>
+        <td class="px-4 py-3"><button ${btnAttr} class="${btnCls}">录入</button></td>
       </tr>`;
     }).join('');
   } catch(e) { /* 静默失败 */ }
+}
+
+// ======= RECORDED PATIENTS =======
+const visitStatusText = {
+  draft: '草稿',
+  submitted: '已提交',
+  signed: '已签名',
+  locked: '已锁定',
+};
+
+async function loadRecordedPatients() {
+  const tbody = document.getElementById('recorded-table');
+  const footer = document.getElementById('recorded-list-footer');
+  const title = document.getElementById('recorded-list-title');
+  if (!tbody || !footer || !title) return;
+  tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-6 text-center text-gray-400">加载中…</td></tr>';
+  footer.textContent = '—';
+  try {
+    const data = await api('GET', '/api/patients/?limit=200');
+    if (!data) {
+      tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-8 text-center text-gray-400">请重新登录后再试</td></tr>';
+      footer.textContent = '—';
+      return;
+    }
+
+    const rawItems = data.items || [];
+    const hasDerivedFlags = rawItems.some(p => p && (p.has_submitted !== undefined || p.has_consent !== undefined));
+    const hasLatestStatus = rawItems.some(p => p && p.latest_visit_status !== undefined);
+
+    let items = [];
+    if (hasDerivedFlags) {
+      items = rawItems.filter(p => !!p.has_submitted || !!p.has_consent);
+    } else if (hasLatestStatus) {
+      // 兼容：后端若仅返回 latest_visit_status（或字段名存在但派生 flags 缺失）
+      items = rawItems.filter(p => ['submitted','signed','locked'].includes(p.latest_visit_status));
+    } else {
+      // 最终兜底：逐个查该患者访视是否存在非 draft（适用于后端未重启、仍不返回派生字段的场景）
+      const out = [];
+      for (const p of rawItems) {
+        try {
+          const visits = await api('GET', '/api/visits/?patient_id=' + p.id);
+          const ok = (visits || []).some(v => v && v.status && v.status !== 'draft');
+          if (ok) out.push(p);
+        } catch (e) {
+          // ignore single patient failure
+        }
+      }
+      items = out;
+    }
+
+    title.textContent = '已录入患者（' + items.length + '）';
+    footer.textContent = '共 ' + items.length + ' 条';
+    if (!items.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-8 text-center text-gray-400">暂无已录入患者</td></tr>';
+      return;
+    }
+    tbody.innerHTML = items.map(p => {
+      if (patientCacheById) patientCacheById[p.id] = p;
+      const enroll = p.enrollment_date ? p.enrollment_date.slice(0,10) : '—';
+      const gender = genderLabel[p.gender] || p.gender;
+      const st = visitStatusText[p.latest_visit_status] || (p.latest_visit_status || '—');
+      return `<tr class="hover:bg-blue-50/40 border-t border-gray-50">
+        <td class="px-5 py-3 font-mono text-blue-600 text-sm">${p.patient_code}</td>
+        <td class="px-4 py-3 text-sm">${p.name_initials || '—'}</td>
+        <td class="px-4 py-3 text-sm">${gender}</td>
+        <td class="px-4 py-3 text-sm">${p.age || '—'}</td>
+        <td class="px-4 py-3 text-sm">${enroll}</td>
+        <td class="px-4 py-3 text-sm">${st}</td>
+        <td class="px-4 py-3"><button onclick="managePatient(${p.id})" class="text-blue-600 text-xs hover:underline">管理/修改</button></td>
+      </tr>`;
+    }).join('');
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-6 text-center text-red-400">加载失败: ' + (e.message || '未知错误') + '</td></tr>';
+  }
 }
 
 // ======= BMI =======
@@ -1719,11 +1859,23 @@ async function submitVisit() {
   if (!currentPatientId) { showToast('请先选择患者'); return; }
   const vid = await ensureVisit();
   if (!vid) return;
-  if (!confirm('确认提交本次访视表单？提交后数据将等待签名确认。')) return;
+  const msg = (currentVisitStatus && currentVisitStatus !== 'draft')
+    ? '确认保存本次修改？（状态将保持不变）'
+    : '确认提交本次访视表单？提交后数据将等待签名确认。';
+  if (!confirm(msg)) return;
   try {
     await saveAllForms(vid);
-    await api('POST', `/api/visits/${vid}/submit`);
-    showToast('✓ 表单已提交，等待签名确认');
+    if (currentVisitStatus && currentVisitStatus !== 'draft') {
+      showToast('✓ 修改已保存（状态保持不变）');
+    } else {
+      await api('POST', `/api/visits/${vid}/submit`);
+      showToast('✓ 表单已提交，等待签名确认');
+      currentVisitStatus = 'submitted';
+
+      // 提交后进入知情同意书，并自动带入当前患者信息
+      const sidebarConsent = document.querySelectorAll('.sidebar-item')[3];
+      showPage('consent', sidebarConsent);
+    }
     loadDashboard();
   } catch(e) {
     showToast('✗ 提交失败: ' + (e.message || '未知错误'));
@@ -1967,6 +2119,10 @@ async function submitConsent() {
     const data = await res.json();
     populateConsent(data);
     showToast('✓ 知情同意记录已保存');
+    // 让患者在“已录入列表”判定中立刻生效（后端也会重新计算）
+    if (patientCacheById && patientCacheById[currentPatientId]) {
+      patientCacheById[currentPatientId].has_consent = true;
+    }
     loadDashboard();
   } catch(e) {
     errEl.textContent = e.message || '保存失败';

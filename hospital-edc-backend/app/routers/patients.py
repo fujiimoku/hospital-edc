@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import exists
 from typing import Optional, List
 from app.database import get_db
 from app.models.patient import Patient
 from app.models.visit import Visit
+from app.models.consent import ConsentRecord
 from app.schemas.patient import PatientCreate, PatientUpdate, PatientOut
 from app.dependencies import get_current_user
 
@@ -19,7 +21,31 @@ def list_patients(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    query = db.query(Patient)
+    latest_status_sq = (
+        db.query(Visit.status)
+        .filter(Visit.patient_id == Patient.id)
+        .order_by(Visit.visit_date.desc(), Visit.id.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+    has_submitted_sq = (
+        db.query(Visit.id)
+        .filter(Visit.patient_id == Patient.id, Visit.status != "draft")
+        .exists()
+    )
+
+    has_consent_sq = (
+        db.query(ConsentRecord.id)
+        .filter(ConsentRecord.patient_id == Patient.id)
+        .exists()
+    )
+
+    query = db.query(
+        Patient,
+        has_submitted_sq.label("has_submitted"),
+        has_consent_sq.label("has_consent"),
+        latest_status_sq.label("latest_visit_status"),
+    )
     if search:
         query = query.filter(
             Patient.patient_code.contains(search)
@@ -28,8 +54,15 @@ def list_patients(
     if status:
         query = query.filter(Patient.status == status)
     total = query.count()
-    items = query.order_by(Patient.id.desc()).offset(skip).limit(limit).all()
-    return {"total": total, "items": [PatientOut.model_validate(p).model_dump() for p in items]}
+    rows = query.order_by(Patient.id.desc()).offset(skip).limit(limit).all()
+    items = []
+    for p, has_submitted, has_consent, latest_visit_status in rows:
+        d = PatientOut.model_validate(p).model_dump()
+        d["has_submitted"] = bool(has_submitted)
+        d["has_consent"] = bool(has_consent)
+        d["latest_visit_status"] = latest_visit_status
+        items.append(d)
+    return {"total": total, "items": items}
 
 
 @router.post("/", response_model=PatientOut)
@@ -80,7 +113,24 @@ def get_patient(
     patient = db.query(Patient).filter(Patient.id == patient_id).first()
     if not patient:
         raise HTTPException(404, "患者不存在")
-    return patient
+    has_submitted = (
+        db.query(exists().where(Visit.patient_id == patient_id).where(Visit.status != "draft"))
+        .scalar()
+    )
+    has_consent = (
+        db.query(exists().where(ConsentRecord.patient_id == patient_id)).scalar()
+    )
+    latest = (
+        db.query(Visit.status)
+        .filter(Visit.patient_id == patient_id)
+        .order_by(Visit.visit_date.desc(), Visit.id.desc())
+        .first()
+    )
+    out = PatientOut.model_validate(patient).model_dump()
+    out["has_submitted"] = bool(has_submitted)
+    out["has_consent"] = bool(has_consent)
+    out["latest_visit_status"] = latest[0] if latest else None
+    return out
 
 
 @router.put("/{patient_id}", response_model=PatientOut)
