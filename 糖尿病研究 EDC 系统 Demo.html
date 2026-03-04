@@ -204,11 +204,23 @@
           <span class="text-gray-400 mx-2">·</span>
           <span id="entry-patient-info" class="text-gray-600 text-sm">请先从患者列表选择患者</span>
         </div>
-        <span id="entry-visit-badge" class="score-badge bg-orange-100 text-orange-700 text-xs hidden">基线访视</span>
       </div>
       <div class="flex gap-2">
         <button onclick="saveDraft()" class="border border-gray-200 text-gray-600 text-sm px-3 py-1.5 rounded-lg hover:bg-gray-50">保存草稿</button>
         <button onclick="submitVisit()" class="bg-blue-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-blue-700">提交表单</button>
+      </div>
+    </div>
+    <!-- Visit Selector Bar -->
+    <div class="bg-gray-50 border-b border-gray-200 px-6 py-2 flex items-center gap-3 overflow-x-auto flex-shrink-0">
+      <span class="text-xs text-gray-400 whitespace-nowrap">访视：</span>
+      <div id="visit-tabs" class="flex items-center gap-2 flex-1">
+        <span class="text-xs text-gray-400">加载中…</span>
+      </div>
+      <div class="flex items-center gap-2 ml-auto flex-shrink-0">
+        <span id="visit-date-label" class="text-xs text-gray-400 hidden">就诊日期：</span>
+        <input id="visit-date-input" type="date" class="hidden border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-blue-400"/>
+        <span id="visit-status-badge" class="hidden score-badge bg-orange-100 text-orange-700 text-xs">草稿</span>
+        <button id="visit-new-btn" onclick="openNewVisitModal()" class="hidden bg-white border border-blue-200 text-blue-600 text-xs px-3 py-1.5 rounded-lg hover:bg-blue-50">+ 新建访视</button>
       </div>
     </div>
 
@@ -573,6 +585,37 @@
   </div><!-- end main scroll -->
 </main>
 
+<!-- 新建访视弹窗 -->
+<div id="modal-new-visit" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onclick="if(event.target===this)closeNewVisitModal()">
+  <div class="bg-white rounded-2xl shadow-2xl w-80 p-6">
+    <div class="flex items-center justify-between mb-5">
+      <div class="font-semibold text-gray-800">新建访视</div>
+      <button onclick="closeNewVisitModal()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+    </div>
+    <div class="space-y-3">
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">访视类型 <span class="text-red-400">*</span></label>
+        <select id="nv-type" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400">
+          <option value="baseline">基线访视</option>
+          <option value="M6">6个月随访</option>
+          <option value="M12">12个月随访</option>
+          <option value="M18">18个月随访</option>
+          <option value="M24">24个月随访</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">就诊日期 <span class="text-red-400">*</span></label>
+        <input id="nv-date" type="date" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/>
+      </div>
+      <div id="nv-error" class="text-red-500 text-xs min-h-4"></div>
+      <div class="flex gap-3 pt-1">
+        <button id="nv-submit-btn" onclick="submitNewVisit()" class="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700">创建</button>
+        <button onclick="closeNewVisitModal()" class="flex-1 border border-gray-200 text-gray-600 text-sm py-2 rounded-lg hover:bg-gray-50">取消</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- 创建患者弹窗 -->
 <div id="modal-create-patient" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onclick="if(event.target===this)closeCreatePatientModal()">
   <div class="bg-white rounded-2xl shadow-2xl w-96 p-6">
@@ -727,6 +770,13 @@ document.addEventListener('DOMContentLoaded', () => {
   buildDietTable();
   buildExerciseTable();
   buildMealForm();
+  // 就诊日期变更时同步更新到后端
+  document.getElementById('visit-date-input').addEventListener('change', async function() {
+    if (!currentVisitId) return;
+    try {
+      await api('PUT', '/api/visits/' + currentVisitId, { visit_date: this.value });
+    } catch(e) { /* 静默 */ }
+  });
 });
 
 // ======= DATA =======
@@ -776,6 +826,7 @@ function switchTab(name, el) {
 let patientSearchTimer = null;
 let currentPatientId = null;
 let currentPatient = null;
+let patientCacheById = {};
 
 const genderLabel = { male: '男', female: '女' };
 const statusColorApi = {
@@ -804,11 +855,13 @@ function renderPatientTable(items, total) {
   const title = document.getElementById('patient-list-title');
   title.textContent = '患者列表（' + total + '）';
   footer.textContent = '共 ' + total + ' 条，显示 ' + items.length + ' 条';
+  patientCacheById = Object.create(null);
   if (!items.length) {
     tbody.innerHTML = '<tr><td colspan="8" class="px-5 py-8 text-center text-gray-400">暂无患者数据</td></tr>';
     return;
   }
   tbody.innerHTML = items.map(p => {
+    patientCacheById[p.id] = p;
     const gender = genderLabel[p.gender] || p.gender;
     const statusCls = statusColorApi[p.status] || 'bg-gray-100 text-gray-500';
     const statusTxt = statusLabelApi[p.status] || p.status || '未知';
@@ -831,18 +884,51 @@ function onPatientSearch(val) {
   patientSearchTimer = setTimeout(() => loadPatients(val), 350);
 }
 
-function selectPatient(id) {
+async function selectPatient(id) {
   // 切换到录入页，记录当前患者
-  const items = document.querySelectorAll('#patient-table tr');
   let patient = null;
-  document.querySelectorAll('#patient-table tr').forEach(row => {
-    if (row.querySelector('button[onclick*="' + id + '"]')) {
+  const p = patientCacheById ? patientCacheById[id] : null;
+  if (p) {
+    patient = {
+      id,
+      code: p.patient_code,
+      ini: p.name_initials,
+      gender: genderLabel[p.gender] || p.gender,
+      age: p.age,
+    };
+  } else {
+    // 兜底：从表格行里解析（避免缓存缺失导致无法跳转）
+    document.querySelectorAll('#patient-table tr').forEach(row => {
+      const btn = row.querySelector('button');
+      if (!btn) return;
+      const oc = btn.getAttribute('onclick') || '';
+      if (!oc.includes('selectPatient(' + id + ')')) return;
       const cells = row.querySelectorAll('td');
       if (cells.length > 3) {
         patient = { id, code: cells[0].textContent.trim(), ini: cells[1].textContent.trim(), gender: cells[2].textContent.trim(), age: cells[3].textContent.trim() };
       }
+    });
+  }
+
+  // 最终兜底：从后端按 id 拉取（支持从“概况-最近患者”等入口直接进入）
+  if (!patient) {
+    try {
+      const p2 = await api('GET', '/api/patients/' + id);
+      if (p2) {
+        if (patientCacheById) patientCacheById[id] = p2;
+        patient = {
+          id,
+          code: p2.patient_code,
+          ini: p2.name_initials,
+          gender: genderLabel[p2.gender] || p2.gender,
+          age: p2.age,
+        };
+      }
+    } catch (e) {
+      // ignore
     }
-  });
+  }
+
   currentPatientId = id;
   currentVisitId = null; // 重置，进页面后再加载
   currentPatient = patient;
@@ -850,7 +936,9 @@ function selectPatient(id) {
   if (patient) {
     document.getElementById('entry-patient-code').textContent = patient.code;
     document.getElementById('entry-patient-info').textContent = (patient.ini || '') + ' | ' + (patient.gender || '') + ' | ' + (patient.age || '') + '岁';
-    document.getElementById('entry-visit-badge').classList.remove('hidden');
+  } else {
+    document.getElementById('entry-patient-code').textContent = '—';
+    document.getElementById('entry-patient-info').textContent = '患者信息加载失败，请返回患者列表重试';
   }
   showPage('entry', document.querySelectorAll('.sidebar-item')[2]);
   // 加载已有访视数据
@@ -858,17 +946,136 @@ function selectPatient(id) {
 }
 
 async function loadVisitData(patientId) {
+  const tabsEl = document.getElementById('visit-tabs');
+  const newBtn = document.getElementById('visit-new-btn');
+  tabsEl.innerHTML = '<span class="text-xs text-gray-400">加载中…</span>';
   try {
     const visits = await api('GET', '/api/visits/?patient_id=' + patientId);
-    if (!visits || visits.length === 0) return;
-    currentVisitId = visits[0].id;
-    const badge = document.getElementById('entry-visit-badge');
-    badge.textContent = visits[0].visit_type === 'baseline' ? '基线访视' : '随访';
-    badge.classList.remove('hidden');
-    // 加载所有表单数据
-    const allForms = await api('GET', `/api/visits/${currentVisitId}/all-forms`);
+    renderVisitTabs(visits || []);
+    if (visits && visits.length > 0) {
+      await switchVisit(visits[visits.length - 1].id, visits);
+    } else {
+      // 无访视，提示新建
+      currentVisitId = null;
+      tabsEl.innerHTML = '<span class="text-xs text-gray-400">暂无访视记录</span>';
+    }
+    if (newBtn) newBtn.classList.remove('hidden');
+  } catch(e) {
+    tabsEl.innerHTML = '<span class="text-xs text-red-400">加载失败</span>';
+  }
+}
+
+const VISIT_TYPE_LABELS = {
+  baseline: '基线',
+  M6: '6月',
+  M12: '12月',
+  M18: '18月',
+  M24: '24月',
+};
+const VISIT_STATUS_MAP = {
+  draft: { text: '草稿', cls: 'bg-orange-100 text-orange-700' },
+  submitted: { text: '已提交', cls: 'bg-blue-100 text-blue-700' },
+  signed: { text: '已签名', cls: 'bg-green-100 text-green-700' },
+  locked: { text: '已锁定', cls: 'bg-gray-200 text-gray-600' },
+};
+
+function renderVisitTabs(visits) {
+  const tabsEl = document.getElementById('visit-tabs');
+  if (!visits.length) {
+    tabsEl.innerHTML = '<span class="text-xs text-gray-400">暂无访视</span>';
+    return;
+  }
+  tabsEl.innerHTML = visits.map(v => {
+    const label = VISIT_TYPE_LABELS[v.visit_type] || v.visit_type;
+    const st = VISIT_STATUS_MAP[v.status] || VISIT_STATUS_MAP.draft;
+    return `<button
+      id="vtab-${v.id}"
+      onclick="switchVisit(${v.id})"
+      class="vtab flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border border-gray-200 bg-white text-gray-600 hover:border-blue-300 hover:text-blue-600 transition whitespace-nowrap"
+    >
+      <span>${label}访视</span>
+      <span class="score-badge ${st.cls} text-[10px] px-1.5 py-0">${st.text}</span>
+    </button>`;
+  }).join('');
+}
+
+async function switchVisit(visitId, visitsCache) {
+  // 更新活跨样式
+  document.querySelectorAll('.vtab').forEach(b => {
+    b.classList.remove('border-blue-500','bg-blue-50','text-blue-700');
+    b.classList.add('border-gray-200','bg-white','text-gray-600');
+  });
+  const activeTab = document.getElementById('vtab-' + visitId);
+  if (activeTab) {
+    activeTab.classList.remove('border-gray-200','bg-white','text-gray-600');
+    activeTab.classList.add('border-blue-500','bg-blue-50','text-blue-700');
+  }
+  currentVisitId = visitId;
+  // 获取访视信息（优先用缓存）
+  let visit = visitsCache ? visitsCache.find(v => v.id === visitId) : null;
+  if (!visit) {
+    try { visit = await api('GET', '/api/visits/' + visitId); } catch(e) {}
+  }
+  // 更新日期和状态显示
+  if (visit) {
+    const dateInput = document.getElementById('visit-date-input');
+    const dateLabel = document.getElementById('visit-date-label');
+    const statusBadge = document.getElementById('visit-status-badge');
+    if (dateInput) { dateInput.value = visit.visit_date || ''; dateInput.classList.remove('hidden'); }
+    if (dateLabel) dateLabel.classList.remove('hidden');
+    if (statusBadge) {
+      const st = VISIT_STATUS_MAP[visit.status] || VISIT_STATUS_MAP.draft;
+      statusBadge.textContent = st.text;
+      statusBadge.className = 'score-badge text-xs ' + st.cls;
+      statusBadge.classList.remove('hidden');
+    }
+    // 锁定访视禁用编辑
+    const isLocked = visit.status === 'locked' || visit.status === 'signed';
+    document.querySelectorAll('#page-entry input, #page-entry select, #page-entry textarea').forEach(el => {
+      el.disabled = isLocked;
+    });
+    document.querySelector('button[onclick="saveDraft()"]').disabled = isLocked;
+    document.querySelector('button[onclick="submitVisit()"]').disabled = isLocked;
+  }
+  // 清空并重填表单
+  clearAllForms();
+  try {
+    const allForms = await api('GET', `/api/visits/${visitId}/all-forms`);
     if (allForms) populateAllForms(allForms);
-  } catch(e) { /* 无历史数据，静默忽略 */ }
+  } catch(e) { /* 表单暂无数据 */ }
+}
+
+function clearAllForms() {
+  // 清空所有 number/text/date/textarea 输入
+  ['f-height','f-weight','bmi-display','f-waist','f-hip','f-hr','f-sbp','f-dbp',
+   'f-glucose','f-hba1c','f-tc','f-tg','f-hdl','f-ldl','f-alt','f-ast','f-scr','f-egfr','f-ua','f-bun',
+   'f-drug-cost','f-lab-cost','f-service-cost','f-supply-cost','f-other-cost',
+   'f-dtsq-open','eq5d-vas'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = el.id === 'eq5d-vas' ? '70' : '';
+  });
+  document.getElementById('eq5d-vas-val').textContent = '70';
+  // 清空所有 radio
+  document.querySelectorAll('#page-entry input[type=radio]').forEach(r => r.checked = false);
+  // 清空所有 checkbox
+  document.querySelectorAll('#page-entry input[type=checkbox]').forEach(c => c.checked = false);
+  // 重置分数显示
+  ['phq9-score','gad7-score','diet-score','exercise-score'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.textContent = '0';
+  });
+  // 重置药物表格为一行空行
+  const medTbody = document.getElementById('med-table-body');
+  if (medTbody) {
+    const tpl = document.getElementById('med-row-template');
+    medTbody.innerHTML = '';
+    if (tpl) {
+      const row = tpl.cloneNode(true);
+      row.id = 'med-row-1';
+      row.querySelectorAll('input').forEach(i => i.value = '');
+      medTbody.appendChild(row);
+    }
+  }
+  medRowCount = 1;
 }
 
 // ======= CREATE PATIENT MODAL =======
@@ -936,6 +1143,7 @@ async function loadDashboard() {
       return;
     }
     tbody.innerHTML = list.items.map(p => {
+      if (patientCacheById) patientCacheById[p.id] = p;
       const statusCls = statusColorApi[p.status] || 'bg-gray-100 text-gray-500';
       const statusTxt = statusLabelApi[p.status] || '未知';
       const enroll = p.enrollment_date ? p.enrollment_date.slice(0,10) : '—';
@@ -1265,22 +1473,54 @@ let currentVisitId = null;
 
 async function ensureVisit() {
   if (currentVisitId) return currentVisitId;
-  if (!currentPatientId) { showToast('请先选择患者'); return null; }
-  // 查询已有访视
-  const visits = await api('GET', '/api/visits/?patient_id=' + currentPatientId);
-  if (visits && visits.length > 0) {
-    currentVisitId = visits[0].id;
-    document.getElementById('entry-visit-badge').textContent = visits[0].visit_type === 'baseline' ? '基线访视' : '随访 ' + visits[0].visit_type;
-    return currentVisitId;
+  if (!currentPatientId) {
+    showToast('请先到【患者管理】选择患者，并点击“录入”进入');
+    const sidebarPatients = document.querySelectorAll('.sidebar-item')[1];
+    showPage('patients', sidebarPatients);
+    return null;
   }
-  // 创建基线访视
+  showToast('请先在页面顶部【访视】栏选择访视，或点击“+ 新建访视”');
+  const newBtn = document.getElementById('visit-new-btn');
+  if (newBtn) newBtn.classList.remove('hidden');
+  openNewVisitModal();
+  return null;
+}
+
+// ======= NEW VISIT MODAL =======
+function openNewVisitModal() {
+  if (!currentPatientId) { showToast('请先选择患者'); return; }
   const today = new Date().toISOString().slice(0,10);
-  const v = await api('POST', '/api/visits/', { patient_id: currentPatientId, visit_type: 'baseline', visit_date: today });
-  if (!v) return null;
-  currentVisitId = v.id;
-  document.getElementById('entry-visit-badge').textContent = '基线访视';
-  document.getElementById('entry-visit-badge').classList.remove('hidden');
-  return currentVisitId;
+  document.getElementById('nv-date').value = today;
+  document.getElementById('nv-error').textContent = '';
+  const btn = document.getElementById('nv-submit-btn');
+  btn.disabled = false; btn.textContent = '创建';
+  document.getElementById('modal-new-visit').classList.remove('hidden');
+}
+function closeNewVisitModal() {
+  document.getElementById('modal-new-visit').classList.add('hidden');
+}
+async function submitNewVisit() {
+  const errEl = document.getElementById('nv-error');
+  const btn = document.getElementById('nv-submit-btn');
+  errEl.textContent = '';
+  const type = document.getElementById('nv-type').value;
+  const date = document.getElementById('nv-date').value;
+  if (!date) { errEl.textContent = '请选择就诊日期'; return; }
+  btn.disabled = true; btn.textContent = '创建中…';
+  try {
+    const v = await api('POST', '/api/visits/', { patient_id: currentPatientId, visit_type: type, visit_date: date });
+    if (!v) return;
+    closeNewVisitModal();
+    showToast('✓ ' + (VISIT_TYPE_LABELS[type] || type) + '访视已创建');
+    // 重新加载访视列表并切换到新访视
+    const visits = await api('GET', '/api/visits/?patient_id=' + currentPatientId);
+    renderVisitTabs(visits || []);
+    await switchVisit(v.id, visits);
+  } catch(e) {
+    errEl.textContent = e.message || '创建失败';
+  } finally {
+    btn.disabled = false; btn.textContent = '创建';
+  }
 }
 
 // ======= COLLECT FORM DATA =======
@@ -1602,6 +1842,30 @@ function populateAllForms(data) {
         if (cb.nextElementSibling && habits.includes(cb.nextElementSibling.textContent.trim())) cb.checked = true;
       });
     }
+  }
+  // medications
+  if (data.medications && data.medications.length > 0) {
+    const tbody = document.getElementById('med-table-body');
+    tbody.innerHTML = '';
+    const tpl = document.getElementById('med-row-template');
+    data.medications.forEach((med, idx) => {
+      const row = tpl.cloneNode(true);
+      row.id = 'med-row-' + (idx + 1);
+      const sels = row.querySelectorAll('select');
+      const inputs = row.querySelectorAll('input[type=text], input[type=date]');
+      const cb = row.querySelector('input[type=checkbox]');
+      const treatMap = {'糖尿病':'糖尿病','高血压':'高血压','降脂':'降脂','抗血小板':'抗血小板','抗凝':'抗凝','其他':'其他'};
+      const routeMap = {'口服':'口服','皮下注射':'皮下注射','静脉注射':'静脉注射','吸入':'吸入','局部':'局部'};
+      if (sels[0] && med.treatment_type) sels[0].value = med.treatment_type;
+      if (inputs[0] && med.drug_name) inputs[0].value = med.drug_name;
+      if (sels[1] && med.route) sels[1].value = med.route;
+      if (inputs[1] && med.dose) inputs[1].value = med.dose;
+      if (sels[2] && med.frequency) sels[2].value = med.frequency;
+      if (inputs[2] && med.start_date) inputs[2].value = med.start_date;
+      if (cb) cb.checked = med.is_ongoing !== false;
+      tbody.appendChild(row);
+    });
+    medRowCount = data.medications.length;
   }
 }
 
