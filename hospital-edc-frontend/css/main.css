@@ -1,0 +1,150 @@
+/* 全局样式 */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+/* 侧边栏样式 */
+.sidebar-item {
+  transition: all 0.15s;
+}
+
+.sidebar-item:hover {
+  background: rgba(59,130,246,0.12);
+}
+
+.sidebar-item.active {
+  background: #3b82f6;
+  color: white;
+}
+
+/* 标签页样式 */
+.tab-btn {
+  transition: all 0.15s;
+  border-bottom: 2px solid transparent;
+}
+
+.tab-btn.active {
+  border-bottom-color: #3b82f6;
+  color: #3b82f6;
+  font-weight: 600;
+}
+
+.tab-btn:hover:not(.active) {
+  color: #3b82f6;
+  background: #eff6ff;
+}
+
+/* 表单样式 */
+.form-section {
+  border-left: 3px solid #3b82f6;
+  padding-left: 12px;
+  margin-bottom: 24px;
+}
+
+/* 评分徽章 */
+.score-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* 动画 */
+.fade-in {
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 输入框样式 */
+input[type=number]::-webkit-inner-spin-button {
+  opacity: 0.4;
+}
+
+/* 单选按钮组 */
+.radio-group label {
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.1s;
+}
+
+.radio-group label:hover {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.radio-group input[type=radio]:checked + span {
+  color: #2563eb;
+  font-weight: 600;
+}
+
+/* Likert量表 */
+.likert-table th,
+.likert-table td {
+  padding: 8px 10px;
+  text-align: center;
+  font-size: 13px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.likert-table th {
+  background: #f8fafc;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.likert-table tr:hover td {
+  background: #f8faff;
+}
+
+/* 页面切换 */
+.page {
+  display: none;
+}
+
+.page.active {
+  display: block;
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+/* 状态点 */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}

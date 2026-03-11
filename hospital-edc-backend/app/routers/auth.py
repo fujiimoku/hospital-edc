@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Form
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -82,10 +82,10 @@ def change_password(
 
 @router.post("/register-with-code", response_model=UserOut)
 def register_with_invitation_code(
-    username: str,
-    password: str,
-    full_name: str,
-    invitation_code: str,
+    username: str = Form(...),
+    password: str = Form(...),
+    full_name: str = Form(...),
+    invitation_code: str = Form(...),
     db: Session = Depends(get_db),
 ):
     """使用邀请码注册账号"""

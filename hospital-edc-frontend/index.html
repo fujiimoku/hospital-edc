@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>三一照护研究 · 数据录入系统</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="css/main.css">
+<link rel="stylesheet" href="css/auth.css">
+</head>
+<body class="bg-gray-50 h-screen flex overflow-hidden text-gray-800">
+
+<!-- ===== LOGIN OVERLAY ===== -->
+<div id="login-overlay">
+  <div class="login-card">
+    <div class="text-center mb-6">
+      <div class="inline-flex items-center justify-center w-14 h-14 bg-blue-100 rounded-2xl mb-3">
+        <svg class="w-7 h-7 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+      </div>
+      <div class="text-xl font-bold text-gray-800">三一照护研究</div>
+      <div class="text-sm text-gray-400 mt-1">数据录入系统</div>
+    </div>
+
+    <!-- 登录表单 -->
+    <div id="login-form" class="space-y-3">
+      <div>
+        <label class="text-xs font-medium text-gray-600 block mb-1.5">用户名</label>
+        <input id="login-username" type="text" class="login-input" placeholder="请输入用户名" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()"/>
+      </div>
+      <div>
+        <label class="text-xs font-medium text-gray-600 block mb-1.5">密码</label>
+        <input id="login-password" type="password" class="login-input" placeholder="请输入密码" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/>
+      </div>
+      <div id="login-error" class="login-error"></div>
+      <button id="login-btn" class="login-btn" onclick="doLogin()">登 录</button>
+      <div class="text-center text-xs text-gray-400 mt-3">
+        还没有账号？<a href="javascript:void(0)" onclick="toggleAuthForm('register')" class="text-blue-600 hover:text-blue-700">立即注册</a>
+      </div>
+    </div>
+
+    <!-- 注册表单 -->
+    <div id="register-form" class="space-y-3" style="display:none;">
+      <div>
+        <label class="text-xs font-medium text-gray-600 block mb-1.5">用户名</label>
+        <input id="register-username" type="text" class="login-input" placeholder="请输入用户名" autocomplete="username"/>
+      </div>
+      <div>
+        <label class="text-xs font-medium text-gray-600 block mb-1.5">姓名</label>
+        <input id="register-fullname" type="text" class="login-input" placeholder="请输入真实姓名"/>
+      </div>
+      <div>
+        <label class="text-xs font-medium text-gray-600 block mb-1.5">密码</label>
+        <input id="register-password" type="password" class="login-input" placeholder="请输入密码" autocomplete="new-password"/>
+      </div>
+      <div>
+        <label class="text-xs font-medium text-gray-600 block mb-1.5">确认密码</label>
+        <input id="register-password-confirm" type="password" class="login-input" placeholder="请再次输入密码" autocomplete="new-password"/>
+      </div>
+      <div>
+        <label class="text-xs font-medium text-gray-600 block mb-1.5">邀请码</label>
+        <input id="register-invitation-code" type="text" class="login-input" placeholder="请输入邀请码" onkeydown="if(event.key==='Enter')doRegister()"/>
+      </div>
+      <div id="register-error" class="login-error"></div>
+      <button id="register-btn" class="login-btn" onclick="doRegister()">注 册</button>
+      <div class="text-center text-xs text-gray-400 mt-3">
+        已有账号？<a href="javascript:void(0)" onclick="toggleAuthForm('login')" class="text-blue-600 hover:text-blue-700">立即登录</a>
+      </div>
+    </div>
+
+    <div class="text-center text-xs text-gray-300 mt-6">天津医科大学第二医院 · 临床研究中心</div>
+  </div>
+</div>
+
+<!-- ===== SIDEBAR ===== -->
+<aside class="w-56 bg-white border-r border-gray-200 flex flex-col flex-shrink-0 shadow-sm">
+  <div class="px-5 py-4 border-b border-gray-100">
+    <div class="text-blue-600 font-bold text-base leading-tight">三一照护研究</div>
+    <div class="text-gray-400 text-xs mt-0.5">数据录入系统 v1.0</div>
+  </div>
+  <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+    <div class="sidebar-item active rounded-lg px-3 py-2 flex items-center gap-2.5 text-sm cursor-pointer" onclick="showPage('dashboard',this)">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7h18M3 12h18M3 17h18"/></svg>概况
+    </div>
+    <div class="sidebar-item rounded-lg px-3 py-2 flex items-center gap-2.5 text-sm cursor-pointer text-gray-600" onclick="showPage('patients',this)">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0"/></svg>患者管理
+    </div>
+    <div class="sidebar-item rounded-lg px-3 py-2 flex items-center gap-2.5 text-sm cursor-pointer text-gray-600" onclick="showPage('entry',this)">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>数据录入
+    </div>
+    <div class="sidebar-item rounded-lg px-3 py-2 flex items-center gap-2.5 text-sm cursor-pointer text-gray-600" onclick="showPage('consent',this)">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>知情同意
+    </div>
+    <div class="sidebar-item rounded-lg px-3 py-2 flex items-center gap-2.5 text-sm cursor-pointer text-gray-600" onclick="showPage('recorded',this)">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V9m-7-4h2a2 2 0 012 2v2m-6 4h6m-6 4h6"/></svg>已录入患者
+    </div>
+  </nav>
+  <div class="px-4 py-3 border-t border-gray-100 bg-gray-50">
+    <div class="text-xs text-gray-500">当前账号</div>
+    <div id="sidebar-username" class="text-sm font-medium text-gray-700">—</div>
+    <div class="flex items-center justify-between mt-0.5">
+      <div class="text-xs text-blue-500">天津医科大学第二医院</div>
+      <button onclick="doLogout()" class="text-xs text-gray-400 hover:text-red-500 transition" title="退出登录">退出</button>
+    </div>
+  </div>
+</aside>
+
+<!-- ===== MAIN ===== -->
+<main class="flex-1 flex flex-col overflow-hidden">
+  <!-- Top Bar -->
+  <header class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between flex-shrink-0">
+    <div id="page-title" class="font-semibold text-gray-700 text-base">概况</div>
+    <div class="flex items-center gap-3">
+      <span id="header-date" class="text-xs text-gray-400"></span>
+      <button onclick="showPage('entry', document.querySelectorAll('.sidebar-item')[2])" class="bg-blue-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-blue-700 transition flex items-center gap-1.5">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>新建录入
+      </button>
+    </div>
+  </header>
+
+  <div class="flex-1 overflow-y-auto">
+    <!-- 页面内容将通过JavaScript动态加载 -->
+    <div id="page-dashboard" class="page active fade-in p-6">
+      <div class="text-center text-gray-400 py-20">加载中...</div>
+    </div>
+    <div id="page-patients" class="page p-6">
+      <div class="text-center text-gray-400 py-20">加载中...</div>
+    </div>
+    <div id="page-entry" class="page p-6">
+      <div class="text-center text-gray-400 py-20">加载中...</div>
+    </div>
+    <div id="page-consent" class="page p-6">
+      <div class="text-center text-gray-400 py-20">加载中...</div>
+    </div>
+    <div id="page-recorded" class="page p-6">
+      <div class="text-center text-gray-400 py-20">加载中...</div>
+    </div>
+  </div>
+</main>
+
+<!-- JavaScript模块 -->
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/navigation.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>
