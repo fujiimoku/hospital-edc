@@ -7,7 +7,7 @@ from app.models.patient import Patient
 from app.models.visit import Visit
 from app.models.consent import ConsentRecord
 from app.schemas.patient import PatientCreate, PatientUpdate, PatientOut
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, get_accessible_center_ids
 
 router = APIRouter(prefix="/api/patients", tags=["患者管理"])
 
@@ -21,6 +21,9 @@ def list_patients(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    # 获取用户可访问的中心ID列表
+    accessible_centers = get_accessible_center_ids(current_user)
+
     latest_status_sq = (
         db.query(Visit.status)
         .filter(Visit.patient_id == Patient.id)
@@ -46,6 +49,11 @@ def list_patients(
         has_consent_sq.label("has_consent"),
         latest_status_sq.label("latest_visit_status"),
     )
+
+    # 根据用户权限过滤中心
+    if accessible_centers is not None:
+        query = query.filter(Patient.center_id.in_(accessible_centers))
+
     if search:
         query = query.filter(
             Patient.patient_code.contains(search)
@@ -71,15 +79,27 @@ def create_patient(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    # 确定患者所属中心
+    center_id = data.center_id if hasattr(data, 'center_id') and data.center_id else current_user.center_id
+
+    if not center_id:
+        raise HTTPException(400, "无法确定患者所属中心")
+
+    # 检查用户是否有权限在该中心创建患者
+    accessible_centers = get_accessible_center_ids(current_user)
+    if accessible_centers is not None and center_id not in accessible_centers:
+        raise HTTPException(403, "无权在该中心创建患者")
+
     # 自动生成患者编号：取当前最大 id+1
     last = db.query(Patient).order_by(Patient.id.desc()).first()
     next_num = (last.id + 1) if last else 1
     code = f"{data.center_code}-{next_num:03d}"
 
     patient = Patient(
-        **data.model_dump(exclude={"center_code"}),
+        **data.model_dump(exclude={"center_code", "center_id"}),
         patient_code=code,
         center_code=data.center_code,
+        center_id=center_id,
         created_by=current_user.id,
     )
     db.add(patient)
@@ -91,11 +111,24 @@ def create_patient(
 @router.get("/stats")
 def get_stats(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     """首页概况统计"""
-    total = db.query(Patient).count()
-    enrolled = db.query(Patient).filter(Patient.status == "enrolled").count()
+    accessible_centers = get_accessible_center_ids(current_user)
+
+    # 基础查询
+    patient_query = db.query(Patient)
+    if accessible_centers is not None:
+        patient_query = patient_query.filter(Patient.center_id.in_(accessible_centers))
+
+    total = patient_query.count()
+    enrolled = patient_query.filter(Patient.status == "enrolled").count()
+
     # draft 访视 = 待录入；submitted = 待签名
-    pending_entry = db.query(Visit).filter(Visit.status == "draft").count()
-    pending_sign = db.query(Visit).filter(Visit.status == "submitted").count()
+    visit_query = db.query(Visit).join(Patient)
+    if accessible_centers is not None:
+        visit_query = visit_query.filter(Patient.center_id.in_(accessible_centers))
+
+    pending_entry = visit_query.filter(Visit.status == "draft").count()
+    pending_sign = visit_query.filter(Visit.status == "submitted").count()
+
     return {
         "total_patients": total,
         "enrolled": enrolled,
@@ -113,6 +146,12 @@ def get_patient(
     patient = db.query(Patient).filter(Patient.id == patient_id).first()
     if not patient:
         raise HTTPException(404, "患者不存在")
+
+    # 检查权限
+    accessible_centers = get_accessible_center_ids(current_user)
+    if accessible_centers is not None and patient.center_id not in accessible_centers:
+        raise HTTPException(403, "无权访问该患者")
+
     has_submitted = (
         db.query(exists().where(Visit.patient_id == patient_id).where(Visit.status != "draft"))
         .scalar()

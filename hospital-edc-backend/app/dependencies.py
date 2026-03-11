@@ -57,6 +57,23 @@ def get_current_user(
 
 
 def require_admin(current_user: User = Depends(get_current_user)):
-    if current_user.role != "admin":
+    if current_user.role not in ["center_admin", "main_admin"]:
         raise HTTPException(status_code=403, detail="需要管理员权限")
     return current_user
+
+
+def require_main_admin(current_user: User = Depends(get_current_user)):
+    if current_user.role != "main_admin":
+        raise HTTPException(status_code=403, detail="需要总中心管理员权限")
+    return current_user
+
+
+def get_accessible_center_ids(current_user: User) -> list:
+    """
+    获取用户可访问的中心ID列表
+    - main_admin: 可访问所有中心
+    - center_admin/researcher/qc: 只能访问自己的中心
+    """
+    if current_user.role == "main_admin":
+        return None  # None 表示可访问所有中心
+    return [current_user.center_id] if current_user.center_id else []

@@ -1,5 +1,22 @@
 # 糖尿病研究 EDC 系统（Demo）
 
+## 🎉 多中心版本已上线
+
+本系统已升级为**多中心EDC系统**，支持多个研究中心共用一套部署！
+
+**快速开始：** 查看 [QUICK_START.md](QUICK_START.md)
+**完整文档：** 查看 [MULTI_CENTER_GUIDE.md](MULTI_CENTER_GUIDE.md)
+
+### 核心特性
+- ✅ 多中心数据隔离
+- ✅ 邀请码注册系统
+- ✅ 分级权限管理（总管理员/分中心管理员/研究者/质控员）
+- ✅ 总中心可查看所有数据，分中心只能查看自己的数据
+
+---
+
+## 原有内容
+
 本仓库包含：
 - 前端演示页：`糖尿病研究 EDC 系统 Demo.html`（直接浏览器打开）
 - 后端 API：`hospital-edc-backend/`（FastAPI）
@@ -57,6 +74,22 @@ CREATE DATABASE hospital_edc DEFAULT CHARACTER SET utf8mb4;
 > 说明：后端在启动时会尝试自动建表（开发模式）。生产环境建议使用 Alembic 迁移。
 
 ## 3. 创建首个登录账号（重要）
+
+### 多中心系统（推荐）
+
+运行初始化脚本自动创建管理员和示例中心：
+
+```powershell
+cd hospital-edc-backend
+python scripts/init_multi_center.py
+```
+
+这将创建：
+- 总管理员账号：`admin` / `Admin@123`
+- 主中心和3个示例分中心
+- 每个分中心的管理员邀请码
+
+### 传统方式（手动创建）
 
 当前后端的 `/api/auth/register` 需要管理员权限才能创建账号；因此首次使用时，需要先在数据库里手工插入一个 `admin` 用户。
 

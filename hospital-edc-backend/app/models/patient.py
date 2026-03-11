@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Date, DateTime, Enum, Text
+from sqlalchemy import Column, Integer, String, Date, DateTime, Enum, Text, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
@@ -10,6 +10,7 @@ class Patient(Base):
     patient_code = Column(String(20), unique=True, nullable=False, index=True)
     # 例：CHN-017-161
     center_code = Column(String(20), default="CHN-017")
+    center_id = Column(Integer, ForeignKey("centers.id"), nullable=False)
 
     # 姓名拼音首字母（脱敏）
     name_initials = Column(String(10))
@@ -38,5 +39,6 @@ class Patient(Base):
     updated_at = Column(DateTime, onupdate=func.now())
 
     # 关联
+    center = relationship("Center", back_populates="patients")
     visits = relationship("Visit", back_populates="patient")
     consent = relationship("ConsentRecord", back_populates="patient", uselist=False)

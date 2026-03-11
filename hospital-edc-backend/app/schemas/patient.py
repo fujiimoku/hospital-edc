@@ -10,6 +10,7 @@ class PatientCreate(BaseModel):
     age: Optional[int] = None
     visit_number: Optional[str] = None
     center_code: Optional[str] = "CHN-017"
+    center_id: Optional[int] = None
 
     employment_status: Optional[int] = None
     education_level: Optional[int] = None
@@ -32,6 +33,7 @@ class PatientOut(BaseModel):
     id: int
     patient_code: str
     center_code: Optional[str]
+    center_id: int
     name_initials: Optional[str]
     gender: str
     age: Optional[int]

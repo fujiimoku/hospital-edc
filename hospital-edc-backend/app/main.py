@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Request
-from app.routers import auth, patients, visits, forms, consent
+from app.routers import auth, patients, visits, forms, consent, centers, invitation_codes
 from app.database import engine, Base
 import app.models  # noqa: 确保所有 Model 在启动时被注册
 
@@ -36,6 +36,8 @@ app.include_router(patients.router)
 app.include_router(visits.router)
 app.include_router(forms.router)
 app.include_router(consent.router)
+app.include_router(centers.router)
+app.include_router(invitation_codes.router)
 
 @app.get("/")
 def root():

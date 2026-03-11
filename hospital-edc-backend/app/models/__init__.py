@@ -1,4 +1,5 @@
 # 统一导出所有 Model，方便 alembic env.py 导入
+from app.models.center import Center, InvitationCode  # noqa
 from app.models.user import User  # noqa
 from app.models.patient import Patient  # noqa
 from app.models.visit import Visit  # noqa

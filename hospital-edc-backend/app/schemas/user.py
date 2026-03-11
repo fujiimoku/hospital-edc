@@ -15,6 +15,7 @@ class UserOut(BaseModel):
     username: str
     full_name: Optional[str]
     role: str
+    center_id: Optional[int] = None
     is_active: int
     created_at: Optional[datetime]
 
