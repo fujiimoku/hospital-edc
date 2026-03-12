@@ -119,7 +119,7 @@ echo ✓ 系统启动完成！
 echo ========================================
 echo.
 echo 📝 API 文档: http://localhost:8000/api/docs
-echo 🌐 前端页面: 打开 hospital-edc-frontend/index.html
+echo 🌐 前端页面: http://localhost:8000/
 echo 👤 默认账号: admin / Admin@123
 echo.
 echo 💡 提示：

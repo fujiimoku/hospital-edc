@@ -1,9 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Request
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from app.routers import auth, patients, visits, forms, consent, centers, invitation_codes
 from app.database import engine, Base
 import app.models  # noqa: 确保所有 Model 在启动时被注册
+import os
 
 app = FastAPI(
     title="三一照护 EDC 系统 API",
@@ -39,6 +42,22 @@ app.include_router(consent.router)
 app.include_router(centers.router)
 app.include_router(invitation_codes.router)
 
+# ── 前端静态文件托管 ──────────────────────────────────────────
+# 计算前端目录：main.py → app/ → hospital-edc-backend/ → hospital-edc/
+# hospital-edc-frontend 与 hospital-edc-backend 同级
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # hospital-edc-backend/
+_FRONTEND_DIR = os.path.join(os.path.dirname(_BASE_DIR), "hospital-edc-frontend")
+
 @app.get("/")
 def root():
+    """根路径：直接返回前端 index.html"""
+    index_path = os.path.join(_FRONTEND_DIR, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
     return {"message": "EDC 系统 API 运行中", "docs": "/api/docs"}
+
+# 挂载前端静态资源（css / js / pages / 图片等）
+if os.path.isdir(_FRONTEND_DIR):
+    app.mount("/css",   StaticFiles(directory=os.path.join(_FRONTEND_DIR, "css")),   name="css")
+    app.mount("/js",    StaticFiles(directory=os.path.join(_FRONTEND_DIR, "js")),    name="js")
+    app.mount("/pages", StaticFiles(directory=os.path.join(_FRONTEND_DIR, "pages")), name="pages")
