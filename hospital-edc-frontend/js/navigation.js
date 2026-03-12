@@ -21,11 +21,40 @@ function showPage(name, el) {
   document.getElementById('page-title').textContent = titles[name] || name;
 
   // 加载对应页面数据
-  if (name === 'patients') loadPatients();
+  if (name === 'patients') {
+    loadPatientsPage();
+  }
   if (name === 'dashboard') loadDashboard();
   if (name === 'consent') loadConsent();
   if (name === 'recorded') loadRecordedPatients();
   if (name === 'entry') loadEntry();
+}
+
+// 加载患者管理页面
+async function loadPatientsPage() {
+  const pageEl = document.getElementById('page-patients');
+
+  // 检查是否已登录
+  if (!getToken()) {
+    pageEl.innerHTML = '<div class="text-center text-gray-400 py-20">请先登录</div>';
+    return;
+  }
+
+  if (!pageEl.hasAttribute('data-loaded')) {
+    try {
+      const response = await fetch('pages/patients.html');
+      const html = await response.text();
+      pageEl.innerHTML = html;
+      pageEl.setAttribute('data-loaded', 'true');
+    } catch (e) {
+      console.error('加载页面失败:', e);
+      pageEl.innerHTML = '<div class="text-center text-red-400 py-20">页面加载失败: ' + e.message + '</div>';
+      return;
+    }
+  }
+
+  // 加载患者数据
+  loadPatients();
 }
 
 // 标签页切换
