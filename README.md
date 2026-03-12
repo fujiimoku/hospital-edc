@@ -4,14 +4,59 @@
 
 本系统已升级为**多中心EDC系统**，支持多个研究中心共用一套部署！
 
-**快速开始：** 查看 [QUICK_START.md](QUICK_START.md)
-**完整文档：** 查看 [MULTI_CENTER_GUIDE.md](MULTI_CENTER_GUIDE.md)
+### 📖 快速导航
+- **每日使用**：[DAILY_USAGE.md](DAILY_USAGE.md) ⭐ 每天必看
+- **快速开始**：[QUICK_START.md](QUICK_START.md)
+- **完整文档**：[MULTI_CENTER_GUIDE.md](MULTI_CENTER_GUIDE.md)
+- **数据库启动**：[START_DATABASE.md](START_DATABASE.md)
 
 ### 核心特性
 - ✅ 多中心数据隔离
 - ✅ 邀请码注册系统
 - ✅ 分级权限管理（总管理员/分中心管理员/研究者/质控员）
 - ✅ 总中心可查看所有数据，分中心只能查看自己的数据
+
+## 🚀 每次开机后如何启动系统
+
+### 🐳 如果你使用 Docker（推荐）
+
+**你的 MySQL 在 Docker 里运行？** 查看 [DOCKER_MYSQL_GUIDE.md](DOCKER_MYSQL_GUIDE.md)
+
+**快速启动：**
+1. 确保 Docker Desktop 已启动
+2. 双击运行 `start_all_docker.bat`
+3. 等待启动完成
+
+### 💻 如果你使用 Windows 服务
+
+### 方法1：一键启动（最简单）⭐
+
+1. 右键点击 `start_all.bat`
+2. 选择"以管理员身份运行"
+3. 等待启动完成
+
+这个脚本会自动：
+- 启动 MySQL 服务
+- 启动后端 API 服务
+- 显示访问地址
+
+### 方法2：手动启动
+
+**第1步：启动 MySQL**
+```powershell
+# 以管理员身份运行 PowerShell 或 CMD
+net start MySQL
+# 或者
+net start MySQL80
+```
+
+**第2步：启动后端**
+```powershell
+cd hospital-edc-backend
+start.bat
+```
+
+**详细说明：** 查看 [START_DATABASE.md](START_DATABASE.md)
 
 ---
 
