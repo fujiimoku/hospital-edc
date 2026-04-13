@@ -1,0 +1,402 @@
+<!-- 访视数据录入页面 -->
+<div class="max-w-6xl mx-auto">
+  <!-- 患者信息栏 -->
+  <div class="bg-white border border-gray-200 rounded-xl px-5 py-3 mb-4 flex items-center justify-between">
+    <div class="flex items-center gap-4">
+      <span class="text-sm text-gray-500">当前患者：</span>
+      <span id="entry-patient-code" class="font-mono text-blue-600 text-sm font-semibold">未选择</span>
+      <span id="entry-patient-info" class="text-gray-500 text-sm"></span>
+    </div>
+    <div class="flex items-center gap-3">
+      <button onclick="showNewVisitModal()" class="bg-green-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-green-700 transition flex items-center gap-1.5">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        新建访视
+      </button>
+      <span class="text-sm text-gray-500">访视类型：</span>
+      <span id="entry-visit-type" class="text-sm font-medium text-gray-700">—</span>
+      <span class="text-sm text-gray-500">日期：</span>
+      <span id="entry-visit-date" class="text-sm font-medium text-gray-700">—</span>
+    </div>
+  </div>
+
+  <!-- 提示信息 -->
+  <div id="entry-no-visit-tip" class="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-4 text-center">
+    <div class="text-blue-600 text-lg font-semibold mb-2">请先创建访视</div>
+    <div class="text-blue-500 text-sm mb-4">选择患者后，需要先创建一个访视记录才能开始录入数据</div>
+    <button onclick="showNewVisitModal()" class="bg-blue-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-blue-700 transition">
+      创建访视
+    </button>
+  </div>
+
+  <!-- 数据录入区域（默认隐藏） -->
+  <div id="entry-form-area" style="display: none;">
+
+  <!-- Tab导航 -->
+  <div class="bg-white border border-gray-200 rounded-xl mb-4 overflow-hidden">
+    <div class="flex border-b border-gray-100 overflow-x-auto">
+      <button class="tab-btn active px-5 py-3 text-sm whitespace-nowrap" onclick="switchEntryTab('physical')">体格检查</button>
+      <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" onclick="switchEntryTab('lab')">实验室检查</button>
+      <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" onclick="switchEntryTab('comorbidity')">合并症</button>
+      <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" onclick="switchEntryTab('medication')">用药记录</button>
+      <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" onclick="switchEntryTab('cost')">费用指标</button>
+      <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" onclick="switchEntryTab('phq9')">PHQ-9</button>
+      <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" onclick="switchEntryTab('gad7')">GAD-7</button>
+      <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" onclick="switchEntryTab('diet')">饮食评估</button>
+      <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" onclick="switchEntryTab('exercise')">运动评估</button>
+      <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" onclick="switchEntryTab('meal')">膳食调查</button>
+    </div>
+  </div>
+
+  <!-- Tab内容区 -->
+  <div class="bg-white border border-gray-200 rounded-xl p-6">
+    <!-- 体格检查 -->
+    <div id="tab-physical" class="tab-panel">
+      <div class="form-section">
+        <div class="text-sm font-semibold text-gray-700 mb-4">生命体征</div>
+        <div class="grid grid-cols-3 gap-4">
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">身高 (cm)</label>
+            <input type="number" step="0.1" id="pe-height" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="如 170.5"/>
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">体重 (kg)</label>
+            <input type="number" step="0.1" id="pe-weight" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="如 65.0"/>
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">BMI (自动计算)</label>
+            <input type="text" id="pe-bmi" readonly class="w-full border border-gray-100 bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-600"/>
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">收缩压 (mmHg)</label>
+            <input type="number" id="pe-sbp" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="如 120"/>
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">舒张压 (mmHg)</label>
+            <input type="number" id="pe-dbp" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="如 80"/>
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">心率 (次/分)</label>
+            <input type="number" id="pe-hr" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="如 72"/>
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">腰围 (cm)</label>
+            <input type="number" step="0.1" id="pe-waist" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/>
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">臀围 (cm)</label>
+            <input type="number" step="0.1" id="pe-hip" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/>
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">腰臀比 (自动计算)</label>
+            <input type="text" id="pe-whr" readonly class="w-full border border-gray-100 bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-600"/>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 实验室检查 -->
+    <div id="tab-lab" class="tab-panel hidden">
+      <div class="form-section">
+        <div class="text-sm font-semibold text-gray-700 mb-4">血糖指标</div>
+        <div class="grid grid-cols-3 gap-4">
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">空腹血糖 (mmol/L)</label>
+            <input type="number" step="0.01" id="lab-fbg" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/>
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">餐后2h血糖 (mmol/L)</label>
+            <input type="number" step="0.01" id="lab-ppg" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/>
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">糖化血红蛋白 (%)</label>
+            <input type="number" step="0.1" id="lab-hba1c" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section mt-5">
+        <div class="text-sm font-semibold text-gray-700 mb-4">血脂指标</div>
+        <div class="grid grid-cols-4 gap-4">
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">总胆固醇 (mmol/L)</label>
+            <input type="number" step="0.01" id="lab-tc" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/>
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">甘油三酯 (mmol/L)</label>
+            <input type="number" step="0.01" id="lab-tg" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/>
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">HDL-C (mmol/L)</label>
+            <input type="number" step="0.01" id="lab-hdl" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/>
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">LDL-C (mmol/L)</label>
+            <input type="number" step="0.01" id="lab-ldl" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section mt-5">
+        <div class="text-sm font-semibold text-gray-700 mb-4">肝肾功能</div>
+        <div class="grid grid-cols-4 gap-4">
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">ALT (U/L)</label>
+            <input type="number" step="0.1" id="lab-alt" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/>
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">AST (U/L)</label>
+            <input type="number" step="0.1" id="lab-ast" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/>
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">肌酐 (μmol/L)</label>
+            <input type="number" step="0.1" id="lab-cr" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/>
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">尿素氮 (mmol/L)</label>
+            <input type="number" step="0.01" id="lab-bun" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 合并症 -->
+    <div id="tab-comorbidity" class="tab-panel hidden">
+      <div class="form-section">
+        <div class="text-sm font-semibold text-gray-700 mb-4">合并症情况（多选）</div>
+        <div class="grid grid-cols-3 gap-3">
+          <label class="flex items-center gap-2 text-sm cursor-pointer p-3 rounded border border-gray-100 hover:border-blue-200">
+            <input type="checkbox" id="cm-hypertension" class="accent-blue-500"/>
+            <span>高血压</span>
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer p-3 rounded border border-gray-100 hover:border-blue-200">
+            <input type="checkbox" id="cm-dyslipidemia" class="accent-blue-500"/>
+            <span>血脂异常</span>
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer p-3 rounded border border-gray-100 hover:border-blue-200">
+            <input type="checkbox" id="cm-chd" class="accent-blue-500"/>
+            <span>冠心病</span>
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer p-3 rounded border border-gray-100 hover:border-blue-200">
+            <input type="checkbox" id="cm-stroke" class="accent-blue-500"/>
+            <span>脑卒中</span>
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer p-3 rounded border border-gray-100 hover:border-blue-200">
+            <input type="checkbox" id="cm-ckd" class="accent-blue-500"/>
+            <span>慢性肾病</span>
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer p-3 rounded border border-gray-100 hover:border-blue-200">
+            <input type="checkbox" id="cm-retinopathy" class="accent-blue-500"/>
+            <span>视网膜病变</span>
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer p-3 rounded border border-gray-100 hover:border-blue-200">
+            <input type="checkbox" id="cm-neuropathy" class="accent-blue-500"/>
+            <span>神经病变</span>
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer p-3 rounded border border-gray-100 hover:border-blue-200">
+            <input type="checkbox" id="cm-diabetic-foot" class="accent-blue-500"/>
+            <span>糖尿病足</span>
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer p-3 rounded border border-gray-100 hover:border-blue-200">
+            <input type="checkbox" id="cm-other" class="accent-blue-500"/>
+            <span>其他</span>
+          </label>
+        </div>
+        <div class="mt-4">
+          <label class="text-xs text-gray-500 mb-1 block">其他合并症说明</label>
+          <textarea id="cm-other-desc" rows="3" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="如有其他合并症，请详细说明"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- 用药记录 -->
+    <div id="tab-medication" class="tab-panel hidden">
+      <div class="flex items-center justify-between mb-4">
+        <div class="text-sm font-semibold text-gray-700">当前用药列表</div>
+        <button onclick="addMedication()" class="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-700 flex items-center gap-1">
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          添加药物
+        </button>
+      </div>
+      <div id="medication-list" class="space-y-3">
+        <!-- 药物列表将动态生成 -->
+      </div>
+    </div>
+
+    <!-- 费用指标 -->
+    <div id="tab-cost" class="tab-panel hidden">
+      <div class="form-section">
+        <div class="text-sm font-semibold text-gray-700 mb-4">费用统计</div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">药品费用 (元)</label>
+            <input type="number" step="0.01" id="cost-drug" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/>
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">检查费用 (元)</label>
+            <input type="number" step="0.01" id="cost-exam" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/>
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">住院费用 (元)</label>
+            <input type="number" step="0.01" id="cost-hospital" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/>
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">其他费用 (元)</label>
+            <input type="number" step="0.01" id="cost-other" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/>
+          </div>
+        </div>
+        <div class="mt-4 p-4 bg-blue-50 rounded-lg">
+          <div class="text-sm text-gray-600">总费用</div>
+          <div class="text-2xl font-bold text-blue-600" id="cost-total">¥ 0.00</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PHQ-9问卷 -->
+    <div id="tab-phq9" class="tab-panel hidden">
+      <div class="text-xs text-blue-500 bg-blue-50 px-4 py-2 rounded-lg mb-4">
+        过去两周内，以下问题出现的频率（0=完全不会，1=好几天，2=超过一周，3=几乎每天）
+      </div>
+      <div id="phq9-questions" class="space-y-3">
+        <!-- PHQ-9问题将动态生成 -->
+      </div>
+      <div class="mt-4 p-4 bg-gray-50 rounded-xl flex items-center gap-4">
+        <div class="text-sm text-gray-600">PHQ-9 总分</div>
+        <div class="text-3xl font-bold text-blue-600" id="phq9-score">0</div>
+        <div class="text-sm text-gray-400">/ 27</div>
+        <div id="phq9-level" class="score-badge bg-green-100 text-green-700">无抑郁症状</div>
+      </div>
+    </div>
+
+    <!-- GAD-7问卷 -->
+    <div id="tab-gad7" class="tab-panel hidden">
+      <div class="text-xs text-blue-500 bg-blue-50 px-4 py-2 rounded-lg mb-4">
+        过去两周内，以下问题出现的频率（0=完全不会，1=好几天，2=超过一周，3=几乎每天）
+      </div>
+      <div id="gad7-questions" class="space-y-3">
+        <!-- GAD-7问题将动态生成 -->
+      </div>
+      <div class="mt-4 p-4 bg-gray-50 rounded-xl flex items-center gap-4">
+        <div class="text-sm text-gray-600">GAD-7 总分</div>
+        <div class="text-3xl font-bold text-blue-600" id="gad7-score">0</div>
+        <div class="text-sm text-gray-400">/ 21</div>
+        <div id="gad7-level" class="score-badge bg-green-100 text-green-700">无焦虑症状</div>
+      </div>
+    </div>
+
+    <!-- 饮食评估 -->
+    <div id="tab-diet" class="tab-panel hidden">
+      <div class="text-xs text-blue-500 bg-blue-50 px-4 py-2 rounded-lg mb-4">
+        过去30天饮食习惯评估
+      </div>
+      <div id="diet-questions" class="space-y-3">
+        <!-- 饮食评估问题将动态生成 -->
+      </div>
+      <div class="mt-4 p-4 bg-gray-50 rounded-xl flex items-center gap-4">
+        <div class="text-sm text-gray-600">饮食习惯总分</div>
+        <div class="text-3xl font-bold text-blue-600" id="diet-score">0</div>
+        <div class="text-sm text-gray-400">/ 100</div>
+        <div id="diet-level" class="score-badge bg-gray-200 text-gray-700">待评估</div>
+      </div>
+    </div>
+
+    <!-- 运动评估 -->
+    <div id="tab-exercise" class="tab-panel hidden">
+      <div class="text-xs text-blue-500 bg-blue-50 px-4 py-2 rounded-lg mb-4">
+        过去20天运动习惯评估
+      </div>
+      <div id="exercise-questions" class="space-y-3">
+        <!-- 运动评估问题将动态生成 -->
+      </div>
+      <div class="mt-4 p-4 bg-gray-50 rounded-xl flex items-center gap-4">
+        <div class="text-sm text-gray-600">运动习惯总分</div>
+        <div class="text-3xl font-bold text-blue-600" id="exercise-score">0</div>
+        <div class="text-sm text-gray-400">/ 50</div>
+        <div id="exercise-level" class="score-badge bg-gray-200 text-gray-700">待评估</div>
+      </div>
+    </div>
+
+    <!-- 膳食调查 -->
+    <div id="tab-meal" class="tab-panel hidden">
+      <div class="text-xs text-blue-500 bg-blue-50 px-4 py-2 rounded-lg mb-4">
+        一日膳食调查记录
+      </div>
+      <div id="meal-records" class="space-y-4">
+        <!-- 膳食记录将动态生成 -->
+      </div>
+      <div class="form-section mt-5">
+        <div class="text-sm font-semibold text-gray-700 mb-3">不良饮食习惯调查（多选）</div>
+        <div class="grid grid-cols-4 gap-2">
+          <label class="flex items-center gap-1.5 text-sm cursor-pointer p-2 rounded border border-gray-100 hover:border-blue-200">
+            <input type="checkbox" id="meal-habit-1" class="accent-blue-500"/><span>不食早餐</span>
+          </label>
+          <label class="flex items-center gap-1.5 text-sm cursor-pointer p-2 rounded border border-gray-100 hover:border-blue-200">
+            <input type="checkbox" id="meal-habit-2" class="accent-blue-500"/><span>外卖至上</span>
+          </label>
+          <label class="flex items-center gap-1.5 text-sm cursor-pointer p-2 rounded border border-gray-100 hover:border-blue-200">
+            <input type="checkbox" id="meal-habit-3" class="accent-blue-500"/><span>无肉不欢</span>
+          </label>
+          <label class="flex items-center gap-1.5 text-sm cursor-pointer p-2 rounded border border-gray-100 hover:border-blue-200">
+            <input type="checkbox" id="meal-habit-4" class="accent-blue-500"/><span>奶茶必点</span>
+          </label>
+          <label class="flex items-center gap-1.5 text-sm cursor-pointer p-2 rounded border border-gray-100 hover:border-blue-200">
+            <input type="checkbox" id="meal-habit-5" class="accent-blue-500"/><span>餐餐饮酒</span>
+          </label>
+          <label class="flex items-center gap-1.5 text-sm cursor-pointer p-2 rounded border border-gray-100 hover:border-blue-200">
+            <input type="checkbox" id="meal-habit-6" class="accent-blue-500"/><span>暴饮暴食</span>
+          </label>
+          <label class="flex items-center gap-1.5 text-sm cursor-pointer p-2 rounded border border-gray-100 hover:border-blue-200">
+            <input type="checkbox" id="meal-habit-7" class="accent-blue-500"/><span>不食果蔬</span>
+          </label>
+          <label class="flex items-center gap-1.5 text-sm cursor-pointer p-2 rounded border border-gray-100 hover:border-blue-200">
+            <input type="checkbox" id="meal-habit-8" class="accent-blue-500"/><span>喜食宵夜</span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 操作按钮 -->
+  <div class="flex gap-3 mt-4">
+    <button onclick="saveVisitData('draft')" class="bg-gray-100 text-gray-700 text-sm px-6 py-2 rounded-lg hover:bg-gray-200 transition">
+      保存草稿
+    </button>
+    <button onclick="saveVisitData('submitted')" class="bg-blue-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-blue-700 transition">
+      提交审核
+    </button>
+    <button onclick="showPage('patients', document.querySelectorAll('.sidebar-item')[1])" class="border border-gray-200 text-gray-600 text-sm px-4 py-2 rounded-lg hover:bg-gray-50">
+      返回
+    </button>
+  </div>
+  </div><!-- 关闭 entry-form-area -->
+</div>
+
+<!-- 新建访视模态框 -->
+<div id="modal-new-visit" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onclick="if(event.target===this)closeNewVisitModal()">
+  <div class="bg-white rounded-2xl shadow-2xl w-80 p-6">
+    <div class="flex items-center justify-between mb-5">
+      <div class="font-semibold text-gray-800">新建访视</div>
+      <button onclick="closeNewVisitModal()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+    </div>
+    <div class="space-y-3">
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">访视类型 <span class="text-red-400">*</span></label>
+        <select id="nv-type" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400">
+          <option value="baseline">基线访视</option>
+          <option value="M6">6个月随访</option>
+          <option value="M12">12个月随访</option>
+          <option value="M18">18个月随访</option>
+          <option value="M24">24个月随访</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">就诊日期 <span class="text-red-400">*</span></label>
+        <input id="nv-date" type="date" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/>
+      </div>
+      <div id="nv-error" class="text-red-500 text-xs min-h-4"></div>
+      <div class="flex gap-3 pt-1">
+        <button id="nv-submit-btn" onclick="submitNewVisit()" class="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700">创建</button>
+        <button onclick="closeNewVisitModal()" class="flex-1 border border-gray-200 text-gray-600 text-sm py-2 rounded-lg hover:bg-gray-50">取消</button>
+      </div>
+    </div>
+  </div>
+</div>

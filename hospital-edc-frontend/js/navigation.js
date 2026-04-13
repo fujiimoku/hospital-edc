@@ -57,6 +57,71 @@ async function loadPatientsPage() {
   loadPatients();
 }
 
+// 加载数据录入页面
+async function loadEntry() {
+  const pageEl = document.getElementById('page-entry');
+
+  // 检查是否已登录
+  if (!getToken()) {
+    pageEl.innerHTML = '<div class="text-center text-gray-400 py-20">请先登录</div>';
+    return;
+  }
+
+  if (!pageEl.hasAttribute('data-loaded')) {
+    try {
+      const response = await fetch('pages/visit-entry.html');
+      const html = await response.text();
+      pageEl.innerHTML = html;
+      pageEl.setAttribute('data-loaded', 'true');
+
+      // 初始化数据录入模块
+      if (typeof VisitEntry !== 'undefined') {
+        VisitEntry.init();
+      }
+    } catch (e) {
+      console.error('加载页面失败:', e);
+      pageEl.innerHTML = '<div class="text-center text-red-400 py-20">页面加载失败: ' + e.message + '</div>';
+      return;
+    }
+  }
+}
+
+// 加载概况页面
+async function loadDashboard() {
+  const pageEl = document.getElementById('page-dashboard');
+
+  if (!getToken()) {
+    pageEl.innerHTML = '<div class="text-center text-gray-400 py-20">请先登录</div>';
+    return;
+  }
+
+  pageEl.innerHTML = '<div class="text-center text-gray-400 py-20">概况页面开发中...</div>';
+}
+
+// 加载知情同意页面
+async function loadConsent() {
+  const pageEl = document.getElementById('page-consent');
+
+  if (!getToken()) {
+    pageEl.innerHTML = '<div class="text-center text-gray-400 py-20">请先登录</div>';
+    return;
+  }
+
+  pageEl.innerHTML = '<div class="text-center text-gray-400 py-20">知情同意页面开发中...</div>';
+}
+
+// 加载已录入患者页面
+async function loadRecordedPatients() {
+  const pageEl = document.getElementById('page-recorded');
+
+  if (!getToken()) {
+    pageEl.innerHTML = '<div class="text-center text-gray-400 py-20">请先登录</div>';
+    return;
+  }
+
+  pageEl.innerHTML = '<div class="text-center text-gray-400 py-20">已录入患者页面开发中...</div>';
+}
+
 // 标签页切换
 function switchTab(name, el) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));

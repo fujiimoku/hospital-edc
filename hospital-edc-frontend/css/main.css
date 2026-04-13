@@ -148,3 +148,12 @@ input[type=number]::-webkit-inner-spin-button {
   border-radius: 50%;
   display: inline-block;
 }
+
+/* Tab面板 */
+.tab-panel {
+  display: block;
+}
+
+.tab-panel.hidden {
+  display: none;
+}

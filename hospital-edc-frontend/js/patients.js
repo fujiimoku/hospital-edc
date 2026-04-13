@@ -87,9 +87,32 @@ function onPatientSearch(val) {
 
 // 选择患者进入录入页
 async function selectPatient(id) {
-  // 暂时只是跳转，后续会实现完整的录入功能
-  console.log('选择患者:', id);
-  alert('患者录入功能正在开发中，患者ID: ' + id);
+  const patient = patientCacheById[id];
+  if (!patient) {
+    console.error('患者不存在:', id);
+    return;
+  }
+
+  // 保存当前选择的患者到sessionStorage
+  sessionStorage.setItem('currentPatient', JSON.stringify(patient));
+
+  // 跳转到数据录入页面
+  showPage('entry', document.querySelectorAll('.sidebar-item')[2]);
+
+  // 更新数据录入页面的患者信息
+  setTimeout(() => {
+    const codeEl = document.getElementById('entry-patient-code');
+    const infoEl = document.getElementById('entry-patient-info');
+    if (codeEl && infoEl) {
+      codeEl.textContent = patient.patient_code;
+      infoEl.textContent = `${patient.name_initials || ''} / ${genderLabel[patient.gender] || patient.gender} / ${patient.age || '—'}岁`;
+    }
+
+    // 如果VisitEntry模块已加载，设置当前患者
+    if (typeof VisitEntry !== 'undefined') {
+      VisitEntry.currentPatient = patient;
+    }
+  }, 100);
 }
 
 // 打开创建患者模态框
