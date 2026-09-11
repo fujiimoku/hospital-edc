@@ -1,0 +1,18 @@
+# 医院 EDC 后端实际依赖（部署用；根目录 requirements.txt 是全局 freeze，不作为部署依据）
+fastapi
+uvicorn[standard]
+sqlalchemy>=2.0
+pymysql
+pydantic>=2.0
+pydantic-settings
+python-jose[cryptography]
+bcrypt
+python-multipart
+alembic
+cryptography
+pandas
+openpyxl
+python-dotenv
+# 测试
+pytest
+httpx

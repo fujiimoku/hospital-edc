@@ -2,9 +2,9 @@
 多中心系统初始化脚本
 
 此脚本用于初始化多中心EDC系统：
-1. 创建主中心和示例分中心
+1. 创建主中心和分中心（天津 7 家医院，见需求 2.1）
 2. 创建总管理员账号
-3. 生成示例邀请码
+3. 为每个分中心生成管理员邀请码
 """
 
 import sys
@@ -19,49 +19,52 @@ from datetime import datetime, timedelta
 import secrets
 
 
+# 7 家中心（需求 2.1 表；TJ-06/TJ-07 待招募）
+CENTERS = [
+    {"code": "TJ-01", "name": "天津医科大学第二医院",       "is_main": True,  "person": "陈雨",   "phone": "15332199139"},
+    {"code": "TJ-02", "name": "南开大学附属医院（天津市第四医院）", "is_main": False, "person": "张宇宁", "phone": "13702153653"},
+    {"code": "TJ-03", "name": "天津市津南医院",             "is_main": False, "person": "刘基凤", "phone": "18698167787"},
+    {"code": "TJ-04", "name": "天津市津南中医医院",          "is_main": False, "person": "常彦飞", "phone": "18902037544"},
+    {"code": "TJ-05", "name": "天津市蓟县人民医院",          "is_main": False, "person": "李万辉", "phone": "13682151850"},
+    {"code": "TJ-06", "name": "待招募分中心六",             "is_main": False, "person": None,    "phone": None, "active": False},
+    {"code": "TJ-07", "name": "待招募分中心七",             "is_main": False, "person": None,    "phone": None, "active": False},
+]
+
+
 def init_multi_center_system():
     db = SessionLocal()
     try:
-        # 1. 创建主中心
-        main_center = db.query(Center).filter(Center.is_main_center == True).first()
-        if not main_center:
-            main_center = Center(
-                center_code="CHN-001",
-                center_name="总中心",
-                is_main_center=True,
-                contact_person="系统管理员",
-                is_active=True
-            )
-            db.add(main_center)
-            db.commit()
-            db.refresh(main_center)
-            print(f"✓ 创建主中心: {main_center.center_name} ({main_center.center_code})")
-        else:
-            print(f"✓ 主中心已存在: {main_center.center_name}")
-
-        # 2. 创建示例分中心
-        sub_centers_data = [
-            {"code": "CHN-017", "name": "北京分中心"},
-            {"code": "CHN-018", "name": "上海分中心"},
-            {"code": "CHN-019", "name": "广州分中心"},
-        ]
-
-        for center_data in sub_centers_data:
-            existing = db.query(Center).filter(Center.center_code == center_data["code"]).first()
-            if not existing:
+        # 1. 创建/对齐中心
+        main_center = None
+        for c in CENTERS:
+            center = db.query(Center).filter(Center.center_code == c["code"]).first()
+            if not center:
                 center = Center(
-                    center_code=center_data["code"],
-                    center_name=center_data["name"],
-                    is_main_center=False,
-                    is_active=True
+                    center_code=c["code"],
+                    center_name=c["name"],
+                    is_main_center=c["is_main"],
+                    contact_person=c.get("person"),
+                    contact_phone=c.get("phone"),
+                    is_active=c.get("active", True),
                 )
                 db.add(center)
                 db.commit()
-                print(f"✓ 创建分中心: {center_data['name']} ({center_data['code']})")
+                db.refresh(center)
+                print(f"✓ 创建中心: {c['name']} ({c['code']})")
             else:
-                print(f"✓ 分中心已存在: {center_data['name']}")
+                # 对齐名称/负责人等信息（保留现有 id/激活状态）
+                center.center_name = c["name"]
+                center.is_main_center = c["is_main"]
+                if c.get("person"):
+                    center.contact_person = c["person"]
+                if c.get("phone"):
+                    center.contact_phone = c["phone"]
+                db.commit()
+                print(f"✓ 中心已存在并已对齐: {c['name']} ({c['code']})")
+            if c["is_main"]:
+                main_center = center
 
-        # 3. 创建总管理员账号
+        # 2. 创建总管理员账号
         admin_user = db.query(User).filter(User.username == "admin").first()
         if not admin_user:
             admin_user = User(
@@ -77,7 +80,7 @@ def init_multi_center_system():
             print(f"✓ 创建总管理员账号: admin / Admin@123")
         else:
             # 更新现有admin账号为main_admin角色
-            if admin_user.role != "main_admin":
+            if admin_user.role != "main_admin" or admin_user.center_id != main_center.id:
                 admin_user.role = "main_admin"
                 admin_user.center_id = main_center.id
                 db.commit()
@@ -85,8 +88,8 @@ def init_multi_center_system():
             else:
                 print(f"✓ 总管理员账号已存在")
 
-        # 4. 为每个分中心生成一个邀请码（用于创建分中心管理员）
-        centers = db.query(Center).filter(Center.is_main_center == False).all()
+        # 3. 为每个在招分中心生成管理员邀请码
+        centers = db.query(Center).filter(Center.is_main_center == False, Center.is_active == True).all()
         for center in centers:
             existing_code = db.query(InvitationCode).filter(
                 InvitationCode.center_id == center.id,

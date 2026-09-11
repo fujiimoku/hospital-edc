@@ -68,6 +68,20 @@ def require_main_admin(current_user: User = Depends(get_current_user)):
     return current_user
 
 
+def require_qc(current_user: User = Depends(get_current_user)):
+    """质控员或管理员可创建/关闭 query"""
+    if current_user.role not in ("qc", "main_admin", "center_admin"):
+        raise HTTPException(status_code=403, detail="需要质控员权限")
+    return current_user
+
+
+def require_researcher(current_user: User = Depends(get_current_user)):
+    """研究者或管理员可回答 query / 提交、签名访视"""
+    if current_user.role not in ("researcher", "main_admin", "center_admin"):
+        raise HTTPException(status_code=403, detail="需要研究者权限")
+    return current_user
+
+
 def get_accessible_center_ids(current_user: User) -> list:
     """
     获取用户可访问的中心ID列表

@@ -3,13 +3,36 @@ from sqlalchemy.orm import Session
 from sqlalchemy import exists
 from typing import Optional, List
 from app.database import get_db
+from app.models.center import Center
 from app.models.patient import Patient
 from app.models.visit import Visit
 from app.models.consent import ConsentRecord
 from app.schemas.patient import PatientCreate, PatientUpdate, PatientOut
 from app.dependencies import get_current_user, get_accessible_center_ids
+from app.services.patient_code import generate_patient_code
+from app.services.audit import log_change, diff_model
+from app.utils.crypto import encrypt, decrypt, mask
 
 router = APIRouter(prefix="/api/patients", tags=["患者管理"])
+
+# 可查看明文身份信息的角色（researcher 仅限本中心，见 _apply_privacy）
+PLAINTEXT_ROLES = {"main_admin", "center_admin", "researcher"}
+
+
+def _apply_privacy(patient: Patient, current_user) -> None:
+    """按角色组装解密/脱敏后的身份字段（直接写到实例属性上供 PatientOut 读取）。"""
+    can_see_plain = (
+        current_user.role in PLAINTEXT_ROLES
+        and (
+            current_user.role == "main_admin"
+            or current_user.center_id == patient.center_id
+        )
+    )
+    full_name = decrypt(patient.full_name_encrypted)
+    id_card = decrypt(patient.id_card_encrypted)
+    patient.full_name = full_name if can_see_plain else mask(full_name, 1)
+    patient.id_card = id_card if can_see_plain else mask(id_card, 3)
+    patient.phone = patient.phone if can_see_plain else mask(patient.phone, 3)
 
 
 @router.get("/", response_model=dict)
@@ -17,7 +40,7 @@ def list_patients(
     skip: int = 0,
     limit: int = 20,
     search: Optional[str] = Query(None, description="按患者编号或姓名首字母搜索"),
-    status: Optional[str] = Query(None, description="enrolled | withdrawn | completed"),
+    status: Optional[str] = Query(None, description="enrolled | completed | dropout | withdrawn"),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -65,6 +88,7 @@ def list_patients(
     rows = query.order_by(Patient.id.desc()).offset(skip).limit(limit).all()
     items = []
     for p, has_submitted, has_consent, latest_visit_status in rows:
+        _apply_privacy(p, current_user)
         d = PatientOut.model_validate(p).model_dump()
         d["has_submitted"] = bool(has_submitted)
         d["has_consent"] = bool(has_consent)
@@ -79,9 +103,8 @@ def create_patient(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    # 确定患者所属中心
-    center_id = data.center_id if hasattr(data, 'center_id') and data.center_id else current_user.center_id
-
+    # 确定患者所属中心：body.center_id → 当前用户中心
+    center_id = data.center_id or current_user.center_id
     if not center_id:
         raise HTTPException(400, "无法确定患者所属中心")
 
@@ -90,21 +113,30 @@ def create_patient(
     if accessible_centers is not None and center_id not in accessible_centers:
         raise HTTPException(403, "无权在该中心创建患者")
 
-    # 自动生成患者编号：取当前最大 id+1
-    last = db.query(Patient).order_by(Patient.id.desc()).first()
-    next_num = (last.id + 1) if last else 1
-    code = f"{data.center_code}-{next_num:03d}"
+    # 中心信息以数据库实体为准（不信任 body 里的 center_code）
+    center = db.query(Center).filter(Center.id == center_id).first()
+    if not center or not center.is_active:
+        raise HTTPException(400, "所属中心不存在或已停用")
 
+    # 患者编号：按中心前缀 + 4 位流水号（如 TJ01-0001）
+    code = generate_patient_code(db, center)
+
+    payload = data.model_dump(
+        exclude={"center_code", "center_id", "full_name", "id_card"}
+    )
     patient = Patient(
-        **data.model_dump(exclude={"center_code", "center_id"}),
+        **payload,
         patient_code=code,
-        center_code=data.center_code,
+        center_code=center.center_code,
         center_id=center_id,
+        full_name_encrypted=encrypt(data.full_name) if data.full_name else None,
+        id_card_encrypted=encrypt(data.id_card) if data.id_card else None,
         created_by=current_user.id,
     )
     db.add(patient)
     db.commit()
     db.refresh(patient)
+    _apply_privacy(patient, current_user)
     return patient
 
 
@@ -165,6 +197,7 @@ def get_patient(
         .order_by(Visit.visit_date.desc(), Visit.id.desc())
         .first()
     )
+    _apply_privacy(patient, current_user)
     out = PatientOut.model_validate(patient).model_dump()
     out["has_submitted"] = bool(has_submitted)
     out["has_consent"] = bool(has_consent)
@@ -182,10 +215,47 @@ def update_patient(
     patient = db.query(Patient).filter(Patient.id == patient_id).first()
     if not patient:
         raise HTTPException(404, "患者不存在")
-    for key, value in data.model_dump(exclude_unset=True).items():
+
+    accessible_centers = get_accessible_center_ids(current_user)
+    if accessible_centers is not None and patient.center_id not in accessible_centers:
+        raise HTTPException(403, "无权修改该患者")
+
+    changes = data.model_dump(exclude_unset=True)
+    # 敏感字段单独加密处理
+    full_name = changes.pop("full_name", None)
+    id_card = changes.pop("id_card", None)
+    # 患者编号/归属中心不允许通过更新修改
+    changes.pop("patient_code", None)
+    center_id = changes.pop("center_id", None)
+    if center_id is not None:
+        if accessible_centers is not None and center_id not in accessible_centers:
+            raise HTTPException(403, "无权转移患者到该中心")
+        center = db.query(Center).filter(Center.id == center_id).first()
+        if not center:
+            raise HTTPException(400, "目标中心不存在")
+        patient.center_id = center_id
+        patient.center_code = center.center_code
+
+    # 字段级审计：先 diff 再应用（敏感字段只记"已修改"不记明文）
+    diff = diff_model(patient, changes)
+    for key, value in changes.items():
         setattr(patient, key, value)
+    if full_name is not None:
+        patient.full_name_encrypted = encrypt(full_name)
+    if id_card is not None:
+        patient.id_card_encrypted = encrypt(id_card)
+
+    log_change(db, current_user, "patients", patient.id, diff, "update")
+    if full_name is not None:
+        log_change(db, current_user, "patients", patient.id,
+                   {"full_name": ("***", "***")}, "update")
+    if id_card is not None:
+        log_change(db, current_user, "patients", patient.id,
+                   {"id_card": ("***", "***")}, "update")
+
     db.commit()
     db.refresh(patient)
+    _apply_privacy(patient, current_user)
     return patient
 
 
@@ -198,6 +268,11 @@ def delete_patient(
     patient = db.query(Patient).filter(Patient.id == patient_id).first()
     if not patient:
         raise HTTPException(404, "患者不存在")
+
+    accessible_centers = get_accessible_center_ids(current_user)
+    if accessible_centers is not None and patient.center_id not in accessible_centers:
+        raise HTTPException(403, "无权操作该患者")
+
     patient.status = "withdrawn"
     db.commit()
     return {"message": "患者已标记为退出"}
@@ -215,8 +290,12 @@ def list_patient_visits(
     current_user=Depends(get_current_user),
 ):
     """获取某患者的所有访视记录"""
-    if not db.query(Patient).filter(Patient.id == patient_id).first():
+    patient = db.query(Patient).filter(Patient.id == patient_id).first()
+    if not patient:
         raise HTTPException(404, "患者不存在")
+    accessible_centers = get_accessible_center_ids(current_user)
+    if accessible_centers is not None and patient.center_id not in accessible_centers:
+        raise HTTPException(403, "无权访问该患者")
     return (
         db.query(Visit)
         .filter(Visit.patient_id == patient_id)
@@ -233,8 +312,12 @@ def create_patient_visit(
     current_user=Depends(get_current_user),
 ):
     """为指定患者创建新访视"""
-    if not db.query(Patient).filter(Patient.id == patient_id).first():
+    patient = db.query(Patient).filter(Patient.id == patient_id).first()
+    if not patient:
         raise HTTPException(404, "患者不存在")
+    accessible_centers = get_accessible_center_ids(current_user)
+    if accessible_centers is not None and patient.center_id not in accessible_centers:
+        raise HTTPException(403, "无权在该患者下创建访视")
     # patient_id 以 URL 为准，覆盖 body 中的字段
     data.patient_id = patient_id
     existing = (

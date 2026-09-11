@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from app.routers import auth, patients, visits, forms, consent, centers, invitation_codes
+from app.routers import auth, patients, visits, forms, consent, centers, invitation_codes, adverse_events, queries, export, audit, reports, notifications
 from app.database import engine, Base
 import app.models  # noqa: 确保所有 Model 在启动时被注册
 import os
@@ -41,12 +41,23 @@ app.include_router(forms.router)
 app.include_router(consent.router)
 app.include_router(centers.router)
 app.include_router(invitation_codes.router)
+app.include_router(adverse_events.router)
+app.include_router(queries.router)
+app.include_router(export.router)
+app.include_router(audit.router)
+app.include_router(reports.router)
+app.include_router(notifications.router)
 
 # ── 前端静态文件托管 ──────────────────────────────────────────
-# 计算前端目录：main.py → app/ → hospital-edc-backend/ → hospital-edc/
-# hospital-edc-frontend 与 hospital-edc-backend 同级
-_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # hospital-edc-backend/
-_FRONTEND_DIR = os.path.join(os.path.dirname(_BASE_DIR), "hospital-edc-frontend")
+# 前端目录定位，兼容两种布局：
+#   开发：仓库根/hospital-edc-backend/app/main.py → 前端在仓库根/hospital-edc-frontend
+#   Docker：镜像内 /app/app/main.py（WORKDIR=/app）→ 前端在 /app/hospital-edc-frontend
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # hospital-edc-backend/ 或 /app
+_CANDIDATES = [
+    os.path.join(os.path.dirname(_BASE_DIR), "hospital-edc-frontend"),  # 开发布局
+    os.path.join(_BASE_DIR, "hospital-edc-frontend"),                   # Docker 布局
+]
+_FRONTEND_DIR = next((d for d in _CANDIDATES if os.path.isdir(d)), _CANDIDATES[0])
 
 @app.get("/")
 def root():

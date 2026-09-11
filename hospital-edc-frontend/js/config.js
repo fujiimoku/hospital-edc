@@ -1,5 +1,10 @@
 // API配置
-const API_BASE = 'http://localhost:8000';
+// 同源部署：默认请求当前源；多实例 Nginx 按路径分发时（如 /project-a/）自动取路径前缀，
+// 这样前端无需为每个实例单独构建。
+const API_BASE = (function () {
+  const m = window.location.pathname.match(/^\/(project-[^/]+)\//);
+  return m ? m[1] : '';
+})();
 
 // Token管理
 function getToken() {

@@ -14,12 +14,19 @@ class Patient(Base):
 
     # 姓名拼音首字母（脱敏）
     name_initials = Column(String(10))
-    # 完整姓名（加密存储，实际项目可用 AES 加密）
+    # 完整姓名（Fernet 加密存储，见 app/utils/crypto.py）
     full_name_encrypted = Column(String(255))
+    # 身份证号（Fernet 加密存储）
+    id_card_encrypted = Column(String(255))
+    # 联系电话
+    phone = Column(String(20))
 
     gender = Column(Enum("male", "female"), nullable=False)
     age = Column(Integer)
     visit_number = Column(String(50))         # 就诊号
+
+    # 婚姻状况：1未婚 2已婚 3离异 4丧偶
+    marital_status = Column(Integer)
 
     # 社会学信息
     employment_status = Column(Integer)       # 1在职 2无工作 3退休
@@ -32,7 +39,13 @@ class Patient(Base):
 
     consent_date = Column(Date)
     enrollment_date = Column(Date)
-    status = Column(Enum("enrolled", "withdrawn", "completed"), default="enrolled")
+    # enrolled=在研 completed=完成 dropout=脱落/失访 withdrawn=退出
+    status = Column(
+        Enum("enrolled", "completed", "dropout", "withdrawn"), default="enrolled"
+    )
+    # 退出/脱落原因与日期
+    withdraw_reason = Column(Text)
+    withdraw_date = Column(Date)
 
     created_by = Column(Integer)              # 创建者 user_id
     created_at = Column(DateTime, server_default=func.now())
@@ -42,3 +55,4 @@ class Patient(Base):
     center = relationship("Center", back_populates="patients")
     visits = relationship("Visit", back_populates="patient")
     consent = relationship("ConsentRecord", back_populates="patient", uselist=False)
+    adverse_events = relationship("AdverseEvent", back_populates="patient")

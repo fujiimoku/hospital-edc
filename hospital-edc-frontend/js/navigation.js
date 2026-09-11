@@ -16,7 +16,8 @@ function showPage(name, el) {
     patients:'患者管理',
     entry:'数据录入',
     consent:'知情同意书',
-    recorded:'已录入患者'
+    recorded:'已录入患者',
+    export:'数据导出'
   };
   document.getElementById('page-title').textContent = titles[name] || name;
 
@@ -28,6 +29,7 @@ function showPage(name, el) {
   if (name === 'consent') loadConsent();
   if (name === 'recorded') loadRecordedPatients();
   if (name === 'entry') loadEntry();
+  if (name === 'export') loadExport();
 }
 
 // 加载患者管理页面
@@ -86,18 +88,6 @@ async function loadEntry() {
   }
 }
 
-// 加载概况页面
-async function loadDashboard() {
-  const pageEl = document.getElementById('page-dashboard');
-
-  if (!getToken()) {
-    pageEl.innerHTML = '<div class="text-center text-gray-400 py-20">请先登录</div>';
-    return;
-  }
-
-  pageEl.innerHTML = '<div class="text-center text-gray-400 py-20">概况页面开发中...</div>';
-}
-
 // 加载知情同意页面
 async function loadConsent() {
   const pageEl = document.getElementById('page-consent');
@@ -107,7 +97,18 @@ async function loadConsent() {
     return;
   }
 
-  pageEl.innerHTML = '<div class="text-center text-gray-400 py-20">知情同意页面开发中...</div>';
+  if (!pageEl.hasAttribute('data-loaded')) {
+    try {
+      const response = await fetch('pages/consent.html');
+      pageEl.innerHTML = await response.text();
+      pageEl.setAttribute('data-loaded', 'true');
+      if (typeof ConsentPage !== 'undefined') {
+        ConsentPage.init();
+      }
+    } catch (e) {
+      pageEl.innerHTML = '<div class="text-center text-red-400 py-20">页面加载失败: ' + e.message + '</div>';
+    }
+  }
 }
 
 // 加载已录入患者页面
@@ -119,7 +120,44 @@ async function loadRecordedPatients() {
     return;
   }
 
-  pageEl.innerHTML = '<div class="text-center text-gray-400 py-20">已录入患者页面开发中...</div>';
+  if (!pageEl.hasAttribute('data-loaded')) {
+    try {
+      const response = await fetch('pages/recorded.html');
+      pageEl.innerHTML = await response.text();
+      pageEl.setAttribute('data-loaded', 'true');
+    } catch (e) {
+      pageEl.innerHTML = '<div class="text-center text-red-400 py-20">页面加载失败: ' + e.message + '</div>';
+      return;
+    }
+  }
+  if (typeof RecordedPage !== 'undefined') {
+    RecordedPage.init();
+  }
+}
+
+// 加载数据导出页面
+async function loadExport() {
+  const pageEl = document.getElementById('page-export');
+
+  if (!getToken()) {
+    pageEl.innerHTML = '<div class="text-center text-gray-400 py-20">请先登录</div>';
+    return;
+  }
+
+  if (!pageEl.hasAttribute('data-loaded')) {
+    try {
+      const response = await fetch('pages/export.html');
+      const html = await response.text();
+      pageEl.innerHTML = html;
+      pageEl.setAttribute('data-loaded', 'true');
+      if (typeof ExportPage !== 'undefined') {
+        ExportPage.init();
+      }
+    } catch (e) {
+      console.error('加载页面失败:', e);
+      pageEl.innerHTML = '<div class="text-center text-red-400 py-20">页面加载失败: ' + e.message + '</div>';
+    }
+  }
 }
 
 // 标签页切换

@@ -1,0 +1,85 @@
+# 多实例编排：一份后端镜像 + 各项目独立 .env/数据库 + Nginx 单入口
+#
+# 用法：
+#   1. 准备各实例配置：
+#        hospital-edc-backend/.env.project-a   （PORT=8001, DB=edc_project_a）
+#        hospital-edc-backend/.env.project-b   （PORT=8002, DB=edc_project_b）
+#   2. 构建镜像并启动：
+#        docker compose -f docker-compose.multi.yml up -d --build
+#   3. 访问（经 Nginx）：
+#        http://localhost/project-a/  → 内部 8001 实例
+#        http://localhost/project-b/  → 内部 8002 实例
+#
+# 两实例数据库物理隔离（不同库），互不可见。
+
+services:
+  # ── 共享 MySQL（多库隔离）──────────────────────
+  mysql:
+    image: mysql:8.4
+    container_name: edc-multi-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: edc123456
+      TZ: Asia/Shanghai
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - edc-multi-mysql-data:/var/lib/mysql
+      # 首次启动自动建两个项目库（MySQL 官方 initdb.d 机制）
+      - ./deploy/initdb-multi.sql:/docker-entrypoint-initdb.d/initdb.sql:ro
+    # 只绑本机，不对外暴露
+    ports:
+      - "127.0.0.1:3307:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pedc123456"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # ── 项目 A 实例（内部端口 8001）────────────────
+  backend-a:
+    build:
+      context: .
+      dockerfile: hospital-edc-backend/Dockerfile
+    image: edc-backend:multi          # 统一镜像标签，B 实例直接复用
+    container_name: edc-project-a
+    env_file: hospital-edc-backend/.env.project-a
+    environment:
+      DATABASE_URL: mysql+pymysql://root:edc123456@mysql:3306/edc_project_a?charset=utf8mb4
+    depends_on:
+      mysql:
+        condition: service_healthy
+    expose:
+      - "8001"
+    volumes:
+      - edc-uploads-a:/app/uploads
+
+  # ── 项目 B 实例（内部端口 8002）────────────────
+  backend-b:
+    image: edc-backend:multi          # 复用同一份镜像（由 backend-a 构建产出）
+    container_name: edc-project-b
+    env_file: hospital-edc-backend/.env.project-b
+    environment:
+      DATABASE_URL: mysql+pymysql://root:edc123456@mysql:3306/edc_project_b?charset=utf8mb4
+    depends_on:
+      mysql:
+        condition: service_healthy
+    expose:
+      - "8002"
+    volumes:
+      - edc-uploads-b:/app/uploads
+
+  # ── Nginx 单入口 ───────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: edc-multi-nginx
+    depends_on:
+      - backend-a
+      - backend-b
+    ports:
+      - "80:80"
+    volumes:
+      - ./deploy/nginx.conf.example:/etc/nginx/conf.d/default.conf:ro
+
+volumes:
+  edc-multi-mysql-data:
+  edc-uploads-a:
+  edc-uploads-b:

@@ -6,6 +6,7 @@ from datetime import date, datetime
 class ConsentOut(BaseModel):
     id: int
     patient_id: int
+    consent_version: Optional[str]
     subject_signed_date: Optional[date]
     subject_contact: Optional[str]
     proxy_name: Optional[str]

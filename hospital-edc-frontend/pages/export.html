@@ -1,0 +1,84 @@
+<!-- 数据导出页面（M3 北极星：一键导出可分析数据表） -->
+<div class="max-w-4xl mx-auto">
+  <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-4">
+    <h2 class="text-lg font-bold text-gray-800 mb-1">数据导出</h2>
+    <p class="text-sm text-gray-400 mb-5">一键导出可直接用于科研统计分析的数据表（含数据字典）。导出操作会记入审计日志。</p>
+
+    <!-- 导出选项 -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+      <div>
+        <label class="text-xs font-medium text-gray-600 block mb-1.5">文件格式</label>
+        <select id="export-format" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="xlsx">Excel 工作簿（多 Sheet，推荐）</option>
+          <option value="csv">CSV 压缩包（UTF-8，统计软件通用）</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs font-medium text-gray-600 block mb-1.5">入组状态</label>
+        <select id="export-status" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="">全部</option>
+          <option value="enrolled">在研</option>
+          <option value="completed">已完成</option>
+          <option value="dropout">脱落</option>
+          <option value="withdrawn">退出</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs font-medium text-gray-600 block mb-1.5">访视状态</label>
+        <select id="export-visit-status" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="">全部</option>
+          <option value="draft">草稿</option>
+          <option value="submitted">待审核</option>
+          <option value="qc_passed">质控通过</option>
+          <option value="signed">已签名</option>
+          <option value="locked">已锁定</option>
+        </select>
+      </div>
+      <div id="export-center-wrap" style="display:none;">
+        <label class="text-xs font-medium text-gray-600 block mb-1.5">中心范围（仅总中心可选）</label>
+        <select id="export-center" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="">全部中心</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 脱敏开关 -->
+    <label id="export-deidentify-wrap" class="flex items-center gap-2.5 mb-5 cursor-pointer select-none">
+      <input type="checkbox" id="export-deidentify" checked class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+      <span class="text-sm text-gray-700">脱敏导出（隐藏患者姓名/身份证/电话）。<span id="export-privacy-hint" class="text-gray-400 text-xs">取消勾选将导出含隐私字段的明文数据（需管理员权限，慎用）</span></span>
+    </label>
+
+    <button id="export-btn" onclick="ExportPage.download()"
+            class="bg-blue-600 text-white text-sm font-medium px-5 py-2.5 rounded-lg hover:bg-blue-700 transition flex items-center gap-2">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+      导出数据
+    </button>
+  </div>
+
+  <!-- 导出内容说明 -->
+  <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+    <h3 class="text-sm font-bold text-gray-700 mb-3">导出内容</h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+      <div class="flex gap-2.5 p-3 bg-gray-50 rounded-lg">
+        <span class="text-blue-500 font-bold">①</span>
+        <div><div class="font-medium text-gray-700">患者主表</div><div class="text-xs text-gray-400 mt-0.5">一行一患者：编号、中心、人口学信息、入组状态</div></div>
+      </div>
+      <div class="flex gap-2.5 p-3 bg-gray-50 rounded-lg">
+        <span class="text-blue-500 font-bold">②</span>
+        <div><div class="font-medium text-gray-700">访视宽表</div><div class="text-xs text-gray-400 mt-0.5">一行一次访视：体格、化验、合并症、费用、量表总分（PHQ-9/GAD-7/EQ-5D/DTSQ）</div></div>
+      </div>
+      <div class="flex gap-2.5 p-3 bg-gray-50 rounded-lg">
+        <span class="text-blue-500 font-bold">③</span>
+        <div><div class="font-medium text-gray-700">用药表</div><div class="text-xs text-gray-400 mt-0.5">一行一条用药记录（长表）</div></div>
+      </div>
+      <div class="flex gap-2.5 p-3 bg-gray-50 rounded-lg">
+        <span class="text-blue-500 font-bold">④</span>
+        <div><div class="font-medium text-gray-700">不良事件表</div><div class="text-xs text-gray-400 mt-0.5">一行一事件（长表）</div></div>
+      </div>
+      <div class="flex gap-2.5 p-3 bg-gray-50 rounded-lg md:col-span-2">
+        <span class="text-blue-500 font-bold">⑤</span>
+        <div><div class="font-medium text-gray-700">数据字典</div><div class="text-xs text-gray-400 mt-0.5">每个变量的名称、中文含义、类型、取值编码、单位——统计人员可直接对照分析</div></div>
+      </div>
+    </div>
+  </div>
+</div>

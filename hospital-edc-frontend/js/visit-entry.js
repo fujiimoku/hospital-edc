@@ -1,7 +1,9 @@
 // 访视数据录入模块
+// 所有 API 调用统一走 js/config.js 的 api()（API_BASE + getToken()）
 const VisitEntry = {
   currentVisit: null,
   currentPatient: null,
+  _autosaveTimer: null,
 
   // 初始化
   init() {
@@ -16,6 +18,7 @@ const VisitEntry = {
     if (patientData) {
       this.currentPatient = JSON.parse(patientData);
       this.updatePatientInfo();
+      this.loadPatientVisits();
     }
   },
 
@@ -33,6 +36,78 @@ const VisitEntry = {
       const genderLabel = { male: '男', female: '女' };
       const gender = genderLabel[this.currentPatient.gender] || this.currentPatient.gender;
       infoEl.textContent = `${this.currentPatient.name_initials || ''} / ${gender} / ${this.currentPatient.age || '—'}岁`;
+    }
+  },
+
+  // 加载患者的访视列表（填充下拉框，自动选中草稿）
+  async loadPatientVisits() {
+    if (!this.currentPatient) return;
+    const select = document.getElementById('entry-visit-select');
+    if (!select) return;
+    try {
+      const visits = await api('GET', `/api/patients/${this.currentPatient.id}/visits/`);
+      select.innerHTML = '<option value="">选择访视…</option>' + visits.map(v => {
+        const typeLabel = { baseline: '基线', M6: '6月', M12: '12月', M18: '18月', M24: '24月' }[v.visit_type] || v.visit_type;
+        const statusLabel = { draft: '草稿', submitted: '待审核', qc_passed: '质控通过', signed: '已签名', locked: '已锁定' }[v.status] || v.status;
+        return `<option value="${v.id}">${typeLabel}（${v.visit_date}）· ${statusLabel}</option>`;
+      }).join('');
+      // 自动选中最新草稿（或最新一条）
+      const draft = visits.find(v => v.status === 'draft') || visits[visits.length - 1];
+      if (draft) {
+        select.value = String(draft.id);
+        this.onVisitSelect(draft.id);
+      }
+    } catch (e) {
+      console.error('加载访视列表失败:', e);
+      showToast('加载访视列表失败：' + e.message, 'error');
+    }
+  },
+
+  // 选择访视后加载数据
+  async onVisitSelect(visitId) {
+    if (!visitId) { this.currentVisit = null; return; }
+    try {
+      const visit = await api('GET', `/api/visits/${visitId}`);
+      this.currentVisit = visit;
+      this.updateVisitStatusBadge();
+      if (typeof QcBar !== 'undefined') QcBar.refresh();
+      if (visit.status === 'draft') {
+        this.startAutosave();
+      } else {
+        this.stopAutosave();
+      }
+      await this.loadVisitForms(visitId);
+      document.getElementById('entry-no-visit-tip').style.display = 'none';
+      document.getElementById('entry-form-area').style.display = 'block';
+    } catch (e) {
+      console.error('加载访视失败:', e);
+      showToast('加载访视失败：' + e.message, 'error');
+    }
+  },
+
+  updateVisitStatusBadge() {
+    const badge = document.getElementById('entry-visit-status');
+    if (!badge) return;
+    if (!this.currentVisit) { badge.classList.add('hidden'); return; }
+    const map = {
+      draft: ['草稿中', 'bg-blue-100 text-blue-700'],
+      submitted: ['待审核', 'bg-orange-100 text-orange-700'],
+      qc_passed: ['质控通过', 'bg-purple-100 text-purple-700'],
+      signed: ['已签名', 'bg-green-100 text-green-700'],
+      locked: ['已锁定', 'bg-gray-200 text-gray-600'],
+    };
+    const [label, cls] = map[this.currentVisit.status] || [this.currentVisit.status, 'bg-gray-100 text-gray-500'];
+    badge.textContent = label;
+    badge.className = `text-xs px-2 py-0.5 rounded-full ${cls}`;
+  },
+
+  // 加载已有表单数据并回填
+  async loadVisitForms(visitId) {
+    try {
+      const data = await api('GET', `/api/visits/${visitId}/all-forms`);
+      this.fillForms(data);
+    } catch (e) {
+      console.error('加载表单数据失败:', e);
     }
   },
 
@@ -106,9 +181,44 @@ const VisitEntry = {
   initializeQuestions() {
     this.initPHQ9();
     this.initGAD7();
+    this.initEQ5D();
+    this.initDTSQ();
     this.initDietAssessment();
     this.initExerciseAssessment();
     this.initMealRecords();
+  },
+
+  // Likert 单选组通用渲染（0-3 计分）
+  _renderLikert(containerId, questions, namePrefix, onChange) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = questions.map((q, i) => `
+      <div class="border border-gray-200 rounded-lg p-4">
+        <div class="text-sm text-gray-700 mb-3">${i + 1}. ${q}</div>
+        <div class="flex gap-3">
+          ${[0, 1, 2, 3].map(score => `
+            <label class="flex-1 cursor-pointer">
+              <input type="radio" name="${namePrefix}-q${i}" value="${score}" class="hidden ${namePrefix}-radio" onchange="VisitEntry.${onChange}()"/>
+              <div class="border-2 border-gray-200 rounded-lg p-2 text-center text-sm hover:border-blue-400 transition">
+                <div class="font-semibold text-gray-700">${score}</div>
+                <div class="text-xs text-gray-400">${['完全不会', '好几天', '超过一周', '几乎每天'][score]}</div>
+              </div>
+            </label>
+          `).join('')}
+        </div>
+      </div>
+    `).join('');
+    container.querySelectorAll(`.${namePrefix}-radio`).forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        const label = e.target.closest('label');
+        label.parentElement.querySelectorAll('label > div').forEach(div => {
+          div.classList.remove('border-blue-500', 'bg-blue-50');
+          div.classList.add('border-gray-200');
+        });
+        label.querySelector('div').classList.remove('border-gray-200');
+        label.querySelector('div').classList.add('border-blue-500', 'bg-blue-50');
+      });
+    });
   },
 
   // 初始化PHQ-9问卷
@@ -124,39 +234,7 @@ const VisitEntry = {
       '动作或说话速度缓慢到别人已经察觉？或正好相反——烦躁或坐立不安、动来动去的情况更胜于平常',
       '有不如死掉或用某种方式伤害自己的念头'
     ];
-
-    const container = document.getElementById('phq9-questions');
-    if (!container) return;
-
-    container.innerHTML = questions.map((q, i) => `
-      <div class="border border-gray-200 rounded-lg p-4">
-        <div class="text-sm text-gray-700 mb-3">${i + 1}. ${q}</div>
-        <div class="flex gap-3">
-          ${[0, 1, 2, 3].map(score => `
-            <label class="flex-1 cursor-pointer">
-              <input type="radio" name="phq9-q${i}" value="${score}" class="hidden phq9-radio" onchange="VisitEntry.calculatePHQ9()"/>
-              <div class="border-2 border-gray-200 rounded-lg p-2 text-center text-sm hover:border-blue-400 transition">
-                <div class="font-semibold text-gray-700">${score}</div>
-                <div class="text-xs text-gray-400">${['完全不会', '好几天', '超过一周', '几乎每天'][score]}</div>
-              </div>
-            </label>
-          `).join('')}
-        </div>
-      </div>
-    `).join('');
-
-    // 添加选中样式
-    container.querySelectorAll('.phq9-radio').forEach(radio => {
-      radio.addEventListener('change', (e) => {
-        const label = e.target.closest('label');
-        label.parentElement.querySelectorAll('label > div').forEach(div => {
-          div.classList.remove('border-blue-500', 'bg-blue-50');
-          div.classList.add('border-gray-200');
-        });
-        label.querySelector('div').classList.remove('border-gray-200');
-        label.querySelector('div').classList.add('border-blue-500', 'bg-blue-50');
-      });
-    });
+    this._renderLikert('phq9-questions', questions, 'phq9', 'calculatePHQ9');
   },
 
   // 计算PHQ-9总分
@@ -201,39 +279,7 @@ const VisitEntry = {
       '变得容易烦恼或急躁',
       '感到似乎将有可怕的事情发生而害怕'
     ];
-
-    const container = document.getElementById('gad7-questions');
-    if (!container) return;
-
-    container.innerHTML = questions.map((q, i) => `
-      <div class="border border-gray-200 rounded-lg p-4">
-        <div class="text-sm text-gray-700 mb-3">${i + 1}. ${q}</div>
-        <div class="flex gap-3">
-          ${[0, 1, 2, 3].map(score => `
-            <label class="flex-1 cursor-pointer">
-              <input type="radio" name="gad7-q${i}" value="${score}" class="hidden gad7-radio" onchange="VisitEntry.calculateGAD7()"/>
-              <div class="border-2 border-gray-200 rounded-lg p-2 text-center text-sm hover:border-blue-400 transition">
-                <div class="font-semibold text-gray-700">${score}</div>
-                <div class="text-xs text-gray-400">${['完全不会', '好几天', '超过一周', '几乎每天'][score]}</div>
-              </div>
-            </label>
-          `).join('')}
-        </div>
-      </div>
-    `).join('');
-
-    // 添加选中样式
-    container.querySelectorAll('.gad7-radio').forEach(radio => {
-      radio.addEventListener('change', (e) => {
-        const label = e.target.closest('label');
-        label.parentElement.querySelectorAll('label > div').forEach(div => {
-          div.classList.remove('border-blue-500', 'bg-blue-50');
-          div.classList.add('border-gray-200');
-        });
-        label.querySelector('div').classList.remove('border-gray-200');
-        label.querySelector('div').classList.add('border-blue-500', 'bg-blue-50');
-      });
-    });
+    this._renderLikert('gad7-questions', questions, 'gad7', 'calculateGAD7');
   },
 
   // 计算GAD-7总分
@@ -262,6 +308,98 @@ const VisitEntry = {
       levelEl.textContent = '重度焦虑';
       levelEl.className = 'score-badge bg-red-100 text-red-700';
     }
+  },
+
+  // 初始化EQ-5D-5L
+  initEQ5D() {
+    const dims = [
+      { label: '1. 行动能力', opts: ['我四处走动没有任何困难', '我四处走动有一点困难', '我四处走动有中度困难', '我四处走动有严重困难', '我无法四处走动'] },
+      { label: '2. 自己照顾自己', opts: ['我自己洗澡或穿衣没有困难', '我自己洗澡或穿衣有一点困难', '我自己洗澡或穿衣有中度困难', '我自己洗澡或穿衣有严重困难', '我无法自己洗澡或穿衣'] },
+      { label: '3. 日常活动', opts: ['我进行日常活动没有困难', '我进行日常活动有一点困难', '我进行日常活动有中度困难', '我进行日常活动有严重困难', '我无法进行日常活动'] },
+      { label: '4. 疼痛/不舒服', opts: ['我没有任何疼痛或不舒服', '我有一点疼痛或不舒服', '我有中度的疼痛或不舒服', '我有严重的疼痛或不舒服', '我有非常严重的疼痛或不舒服'] },
+      { label: '5. 焦虑或沮丧', opts: ['我没有焦虑或沮丧', '我有一点焦虑或沮丧', '我有中度焦虑或沮丧', '我有严重的焦虑或沮丧', '我有非常严重的焦虑或沮丧'] },
+    ];
+    const container = document.getElementById('eq5d-questions');
+    if (!container) return;
+    container.innerHTML = dims.map((dim, i) => `
+      <div class="border border-gray-200 rounded-lg p-4">
+        <div class="text-sm font-semibold text-gray-700 mb-2">${dim.label}</div>
+        <div class="space-y-1">${dim.opts.map((opt, j) => `
+          <label class="flex items-center gap-2 cursor-pointer text-sm py-1 px-2 rounded hover:bg-blue-50">
+            <input type="radio" name="eq5d-q${i}" value="${j + 1}" class="accent-blue-500 flex-shrink-0" onchange="VisitEntry.calculateEQ5D()"/>
+            <span>${opt}</span>
+          </label>`).join('')}
+        </div>
+      </div>
+    `).join('');
+  },
+
+  // EQ-5D 摘要（已答维度数）
+  calculateEQ5D() {
+    const answered = ['eq5d-q0', 'eq5d-q1', 'eq5d-q2', 'eq5d-q3', 'eq5d-q4']
+      .filter(n => document.querySelector(`input[name="${n}"]:checked`)).length;
+    const vasVal = document.getElementById('eq5d-vas-val');
+    if (vasVal) {
+      vasVal.textContent = document.getElementById('eq5d-vas')?.value ?? vasVal.textContent;
+    }
+    const summary = document.getElementById('eq5d-summary');
+    if (summary) summary.textContent = `已答 ${answered} / 5 个维度`;
+  },
+
+  // 初始化DTSQ
+  initDTSQ() {
+    const items = [
+      '1. 总体而言，您对目前的糖尿病治疗方案满意吗？',
+      '2. 您认为目前的治疗方案在控制血糖方面效果如何？',
+      '3. 您是否因治疗方案带来的不便而感到困扰？（如注射次数、服药频率等）',
+      '4. 您对治疗方案的灵活性满意吗？（如调整剂量、适应生活方式变化的能力）',
+      '5. 您是否担心治疗方案的不良反应（如低血糖、体重增加等）？',
+      '6. 您认为目前的治疗方案对日常生活的干扰程度如何？',
+      '7. 如果可以重新选择，您是否愿意继续使用目前的治疗方案？',
+      '8. 您对治疗方案的费用负担满意吗？',
+      '9. 您认为治疗方案的学习和操作难度如何？',
+    ];
+    const opts = ['非常不满意', '比较不满意', '一般', '比较满意', '非常满意'];
+    const container = document.getElementById('dtsq-questions');
+    if (!container) return;
+    container.innerHTML = items.map((q, i) => `
+      <div class="border border-gray-200 rounded-lg p-4">
+        <div class="text-sm text-gray-700 mb-3">${q}</div>
+        <div class="flex gap-2">
+          ${opts.map((label, v) => `
+            <label class="flex-1 cursor-pointer">
+              <input type="radio" name="dtsq-q${i}" value="${v + 1}" class="hidden dtsq-radio" onchange="VisitEntry.calculateDTSQ()"/>
+              <div class="border-2 border-gray-200 rounded-lg px-1 py-2 text-center text-xs hover:border-blue-400 transition">
+                ${v + 1}级<br/><span class="text-gray-400">${label}</span>
+              </div>
+            </label>
+          `).join('')}
+        </div>
+      </div>
+    `).join('');
+    container.querySelectorAll('.dtsq-radio').forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        const label = e.target.closest('label');
+        label.parentElement.querySelectorAll('label > div').forEach(div => {
+          div.classList.remove('border-blue-500', 'bg-blue-50');
+          div.classList.add('border-gray-200');
+        });
+        label.querySelector('div').classList.remove('border-gray-200');
+        label.querySelector('div').classList.add('border-blue-500', 'bg-blue-50');
+      });
+    });
+  },
+
+  // 计算DTSQ总分
+  calculateDTSQ() {
+    let total = 0;
+    for (let i = 0; i < 9; i++) {
+      const selected = document.querySelector(`input[name="dtsq-q${i}"]:checked`);
+      if (selected) {
+        total += parseInt(selected.value);
+      }
+    }
+    document.getElementById('dtsq-score').textContent = total;
   },
 
   // 初始化饮食评估
@@ -298,15 +436,13 @@ const VisitEntry = {
 
   // 计算饮食评估总分
   calculateDietScore() {
-    const maxScores = [10, 10, 15, 15, 10, 10, 10, 10, 10];
     let total = 0;
-
-    maxScores.forEach((max, i) => {
+    for (let i = 0; i < 9; i++) {
       const input = document.getElementById(`diet-q${i}`);
       if (input) {
         total += parseInt(input.value);
       }
-    });
+    }
 
     document.getElementById('diet-score').textContent = total;
 
@@ -357,7 +493,6 @@ const VisitEntry = {
   // 计算运动评估总分
   calculateExerciseScore() {
     let total = 0;
-
     for (let i = 0; i < 5; i++) {
       const input = document.getElementById(`exercise-q${i}`);
       if (input) {
@@ -407,8 +542,9 @@ const VisitEntry = {
   },
 
   // 添加药物
-  addMedication() {
+  addMedication(med = {}) {
     const container = document.getElementById('medication-list');
+    if (!container) return;
     const index = container.children.length;
 
     const medDiv = document.createElement('div');
@@ -421,15 +557,15 @@ const VisitEntry = {
       <div class="grid grid-cols-3 gap-3">
         <div>
           <label class="text-xs text-gray-500 mb-1 block">药品名称</label>
-          <input type="text" class="med-name w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="如：二甲双胍"/>
+          <input type="text" value="${med.drug_name || ''}" class="med-name w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="如：二甲双胍"/>
         </div>
         <div>
           <label class="text-xs text-gray-500 mb-1 block">剂量</label>
-          <input type="text" class="med-dosage w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="如：500mg"/>
+          <input type="text" value="${med.dose || ''}" class="med-dosage w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="如：500mg"/>
         </div>
         <div>
           <label class="text-xs text-gray-500 mb-1 block">频次</label>
-          <input type="text" class="med-frequency w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="如：每日2次"/>
+          <input type="text" value="${med.frequency || ''}" class="med-frequency w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="如：每日2次"/>
         </div>
       </div>
     `;
@@ -437,61 +573,139 @@ const VisitEntry = {
     container.appendChild(medDiv);
   },
 
-  // 加载访视数据
-  async loadVisitData(visitId) {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/visits/${visitId}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-
-      if (!response.ok) throw new Error('加载访视数据失败');
-
-      const visit = await response.json();
-      this.currentVisit = visit;
-
-      // 填充表单数据
-      this.fillFormData(visit);
-    } catch (error) {
-      console.error('加载访视数据失败:', error);
-      alert('加载访视数据失败');
-    }
-  },
-
-  // 填充表单数据
-  fillFormData(visit) {
-    // 体格检查
-    if (visit.physical_exam) {
-      const pe = visit.physical_exam;
-      this.setInputValue('pe-height', pe.height);
-      this.setInputValue('pe-weight', pe.weight);
-      this.setInputValue('pe-sbp', pe.systolic_bp);
-      this.setInputValue('pe-dbp', pe.diastolic_bp);
+  // ===== 数据回填 =====
+  fillForms(data) {
+    const pe = data.physical_exam;
+    if (pe) {
+      this.setInputValue('pe-height', pe.height_cm);
+      this.setInputValue('pe-weight', pe.weight_kg);
+      this.setInputValue('pe-sbp', pe.sbp_mmhg);
+      this.setInputValue('pe-dbp', pe.dbp_mmhg);
       this.setInputValue('pe-hr', pe.heart_rate);
-      this.setInputValue('pe-waist', pe.waist_circumference);
-      this.setInputValue('pe-hip', pe.hip_circumference);
+      this.setInputValue('pe-waist', pe.waist_cm);
+      this.setInputValue('pe-hip', pe.hip_cm);
       this.calculateBMI();
       this.calculateWHR();
     }
 
-    // 实验室检查
-    if (visit.lab_results) {
-      const lab = visit.lab_results;
+    const lab = data.lab_results;
+    if (lab) {
       this.setInputValue('lab-fbg', lab.fasting_glucose);
-      this.setInputValue('lab-ppg', lab.postprandial_glucose);
       this.setInputValue('lab-hba1c', lab.hba1c);
-      this.setInputValue('lab-tc', lab.total_cholesterol);
-      this.setInputValue('lab-tg', lab.triglycerides);
-      this.setInputValue('lab-hdl', lab.hdl_cholesterol);
-      this.setInputValue('lab-ldl', lab.ldl_cholesterol);
+      this.setInputValue('lab-tc', lab.tc);
+      this.setInputValue('lab-tg', lab.tg);
+      this.setInputValue('lab-hdl', lab.hdl_c);
+      this.setInputValue('lab-ldl', lab.ldl_c);
       this.setInputValue('lab-alt', lab.alt);
       this.setInputValue('lab-ast', lab.ast);
-      this.setInputValue('lab-cr', lab.creatinine);
+      this.setInputValue('lab-cr', lab.scr);
       this.setInputValue('lab-bun', lab.bun);
     }
 
-    // 更多数据填充...
+    const cm = data.comorbidity;
+    if (cm) {
+      this.setChecked('cm-hypertension', cm.hypertension === 1);
+      this.setChecked('cm-ckd', cm.ckd === 1);
+      this.setChecked('cm-chd', cm.chd === 1);
+      this.setChecked('cm-stroke', cm.stroke === 1);
+      this.setChecked('cm-retinopathy', cm.dr === 1);
+      this.setChecked('cm-neuropathy', cm.dn === 1);
+      this.setChecked('cm-diabetic-foot', cm.df === 1);
+    }
+
+    // 用药
+    const medList = document.getElementById('medication-list');
+    if (medList) medList.innerHTML = '';
+    (data.medications || []).forEach(m => this.addMedication(m));
+
+    // 费用
+    const cost = data.cost_indicators;
+    if (cost) {
+      this.setInputValue('cost-drug', cost.drug_cost);
+      this.setInputValue('cost-exam', cost.lab_cost);
+      this.setInputValue('cost-hospital', cost.service_cost);
+      this.setInputValue('cost-other', cost.other_cost);
+      this.calculateTotalCost();
+    }
+
+    // 问卷
+    const qs = data.questionnaires || {};
+    const phq9 = qs.phq9;
+    if (phq9) {
+      for (let i = 0; i < 9; i++) {
+        this.setRadio(`phq9-q${i}`, phq9[`q${i + 1}`]);
+      }
+      this.calculatePHQ9();
+    }
+    const gad7 = qs.gad7;
+    if (gad7) {
+      for (let i = 0; i < 7; i++) {
+        this.setRadio(`gad7-q${i}`, gad7[`q${i + 1}`]);
+      }
+      this.calculateGAD7();
+    }
+    const eq5d = qs.eq5d;
+    if (eq5d) {
+      this.setRadio('eq5d-q0', eq5d.eq_mobility);
+      this.setRadio('eq5d-q1', eq5d.eq_self_care);
+      this.setRadio('eq5d-q2', eq5d.eq_usual_activity);
+      this.setRadio('eq5d-q3', eq5d.eq_pain);
+      this.setRadio('eq5d-q4', eq5d.eq_anxiety);
+      const vas = document.getElementById('eq5d-vas');
+      if (vas && eq5d.eq_vas_score != null) {
+        vas.value = eq5d.eq_vas_score;
+        document.getElementById('eq5d-vas-val').textContent = eq5d.eq_vas_score;
+      }
+    }
+    const dtsq = qs.dtsq;
+    if (dtsq) {
+      for (let i = 0; i < 9; i++) {
+        this.setRadio(`dtsq-q${i}`, dtsq[`q${i + 1}`]);
+      }
+      this.calculateDTSQ();
+      this.setInputValue('dtsq-open-text', dtsq.dtsq_open_text);
+    }
+
+    // 生活方式
+    const ls = data.lifestyle;
+    if (ls) {
+      if (ls.diet_scores_json) {
+        try {
+          const scores = JSON.parse(ls.diet_scores_json);
+          scores.forEach((v, i) => {
+            const input = document.getElementById(`diet-q${i}`);
+            if (input) {
+              input.value = v;
+              const label = document.getElementById(`diet-q${i}-score`);
+              if (label) label.textContent = v;
+            }
+          });
+          this.calculateDietScore();
+        } catch (e) { /* 忽略历史脏数据 */ }
+      }
+      if (ls.exercise_scores_json) {
+        try {
+          const scores = JSON.parse(ls.exercise_scores_json);
+          scores.forEach((v, i) => {
+            const input = document.getElementById(`exercise-q${i}`);
+            if (input) {
+              input.value = v;
+              const label = document.getElementById(`exercise-q${i}-score`);
+              if (label) label.textContent = v;
+            }
+          });
+          this.calculateExerciseScore();
+        } catch (e) { /* 忽略历史脏数据 */ }
+      }
+    }
+
+    // 膳食记录
+    (data.meal_records || []).forEach((r, i) => {
+      if (i < 4) {
+        this.setInputValue(`meal-${i}-food`, r.dish_name);
+        this.setInputValue(`meal-${i}-amount`, r.estimated_amount);
+      }
+    });
   },
 
   // 设置输入值
@@ -502,67 +716,78 @@ const VisitEntry = {
     }
   },
 
-  // 收集表单数据
+  setChecked(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.checked = !!value;
+  },
+
+  setRadio(name, value) {
+    if (value === null || value === undefined) return;
+    const radio = document.querySelector(`input[name="${name}"][value="${value}"]`);
+    if (radio) {
+      radio.checked = true;
+      radio.dispatchEvent(new Event('change'));
+    }
+  },
+
+  // ===== 数据收集（与后端 schema 字段名对齐）=====
   collectFormData() {
     return {
       physical_exam: {
-        height: this.getInputValue('pe-height'),
-        weight: this.getInputValue('pe-weight'),
-        systolic_bp: this.getInputValue('pe-sbp'),
-        diastolic_bp: this.getInputValue('pe-dbp'),
+        height_cm: this.getInputValue('pe-height'),
+        weight_kg: this.getInputValue('pe-weight'),
+        sbp_mmhg: this.getInputValue('pe-sbp'),
+        dbp_mmhg: this.getInputValue('pe-dbp'),
         heart_rate: this.getInputValue('pe-hr'),
-        waist_circumference: this.getInputValue('pe-waist'),
-        hip_circumference: this.getInputValue('pe-hip')
+        waist_cm: this.getInputValue('pe-waist'),
+        hip_cm: this.getInputValue('pe-hip'),
       },
       lab_results: {
         fasting_glucose: this.getInputValue('lab-fbg'),
-        postprandial_glucose: this.getInputValue('lab-ppg'),
         hba1c: this.getInputValue('lab-hba1c'),
-        total_cholesterol: this.getInputValue('lab-tc'),
-        triglycerides: this.getInputValue('lab-tg'),
-        hdl_cholesterol: this.getInputValue('lab-hdl'),
-        ldl_cholesterol: this.getInputValue('lab-ldl'),
+        tc: this.getInputValue('lab-tc'),
+        tg: this.getInputValue('lab-tg'),
+        hdl_c: this.getInputValue('lab-hdl'),
+        ldl_c: this.getInputValue('lab-ldl'),
         alt: this.getInputValue('lab-alt'),
         ast: this.getInputValue('lab-ast'),
-        creatinine: this.getInputValue('lab-cr'),
-        bun: this.getInputValue('lab-bun')
+        scr: this.getInputValue('lab-cr'),
+        bun: this.getInputValue('lab-bun'),
       },
       comorbidity: {
-        hypertension: document.getElementById('cm-hypertension')?.checked || false,
-        dyslipidemia: document.getElementById('cm-dyslipidemia')?.checked || false,
-        chd: document.getElementById('cm-chd')?.checked || false,
-        stroke: document.getElementById('cm-stroke')?.checked || false,
-        ckd: document.getElementById('cm-ckd')?.checked || false,
-        retinopathy: document.getElementById('cm-retinopathy')?.checked || false,
-        neuropathy: document.getElementById('cm-neuropathy')?.checked || false,
-        diabetic_foot: document.getElementById('cm-diabetic-foot')?.checked || false,
-        other: document.getElementById('cm-other')?.checked || false,
-        other_description: document.getElementById('cm-other-desc')?.value || ''
+        hypertension: document.getElementById('cm-hypertension')?.checked ? 1 : 0,
+        ckd: document.getElementById('cm-ckd')?.checked ? 1 : 0,
+        chd: document.getElementById('cm-chd')?.checked ? 1 : 0,
+        stroke: document.getElementById('cm-stroke')?.checked ? 1 : 0,
+        dr: document.getElementById('cm-retinopathy')?.checked ? 1 : 0,
+        dn: document.getElementById('cm-neuropathy')?.checked ? 1 : 0,
+        df: document.getElementById('cm-diabetic-foot')?.checked ? 1 : 0,
       },
       medications: this.collectMedications(),
-      cost_indicator: {
+      cost_indicators: {
         drug_cost: this.getInputValue('cost-drug'),
-        exam_cost: this.getInputValue('cost-exam'),
-        hospital_cost: this.getInputValue('cost-hospital'),
-        other_cost: this.getInputValue('cost-other')
+        lab_cost: this.getInputValue('cost-exam'),
+        service_cost: this.getInputValue('cost-hospital'),
+        other_cost: this.getInputValue('cost-other'),
       },
       questionnaires: {
-        phq9: this.collectPHQ9(),
-        gad7: this.collectGAD7()
+        phq9: this.collectLikert('phq9-q', 9),
+        gad7: this.collectLikert('gad7-q', 7),
+        eq5d: this.collectEQ5D(),
+        dtsq: this.collectDTSQ(),
       },
       lifestyle: {
-        diet_score: parseInt(document.getElementById('diet-score')?.textContent || 0),
-        exercise_score: parseInt(document.getElementById('exercise-score')?.textContent || 0),
-        meal_records: this.collectMealRecords(),
-        bad_habits: this.collectBadHabits()
-      }
+        diet_scores_json: JSON.stringify(this.collectSliders('diet-q', 9)),
+        exercise_scores_json: JSON.stringify(this.collectSliders('exercise-q', 5)),
+      },
+      meal_records: this.collectMealRecords(),
     };
   },
 
   // 获取输入值
   getInputValue(id) {
     const input = document.getElementById(id);
-    if (!input || !input.value) return null;
+    if (!input || input.value === '') return null;
     return parseFloat(input.value) || input.value;
   },
 
@@ -573,73 +798,165 @@ const VisitEntry = {
     if (!container) return medications;
 
     container.querySelectorAll('.border').forEach(medDiv => {
-      const name = medDiv.querySelector('.med-name')?.value;
-      const dosage = medDiv.querySelector('.med-dosage')?.value;
-      const frequency = medDiv.querySelector('.med-frequency')?.value;
+      const drug_name = medDiv.querySelector('.med-name')?.value?.trim();
+      const dose = medDiv.querySelector('.med-dosage')?.value?.trim();
+      const frequency = medDiv.querySelector('.med-frequency')?.value?.trim();
 
-      if (name) {
-        medications.push({ name, dosage, frequency });
+      if (drug_name) {
+        medications.push({ drug_name, dose, frequency });
       }
     });
 
     return medications;
   },
 
-  // 收集PHQ-9数据
-  collectPHQ9() {
-    const answers = [];
-    for (let i = 0; i < 9; i++) {
-      const selected = document.querySelector(`input[name="phq9-q${i}"]:checked`);
-      answers.push(selected ? parseInt(selected.value) : null);
+  // 收集 Likert 问卷（PHQ-9/GAD-7）：{q1..qn}
+  collectLikert(prefix, count) {
+    const result = {};
+    for (let i = 0; i < count; i++) {
+      const selected = document.querySelector(`input[name="${prefix}${i}"]:checked`);
+      result[`q${i + 1}`] = selected ? parseInt(selected.value) : null;
     }
-    return {
-      answers,
-      total_score: parseInt(document.getElementById('phq9-score')?.textContent || 0)
-    };
+    return result;
   },
 
-  // 收集GAD-7数据
-  collectGAD7() {
-    const answers = [];
-    for (let i = 0; i < 7; i++) {
-      const selected = document.querySelector(`input[name="gad7-q${i}"]:checked`);
-      answers.push(selected ? parseInt(selected.value) : null);
+  // 收集 EQ-5D
+  collectEQ5D() {
+    const dims = ['eq_mobility', 'eq_self_care', 'eq_usual_activity', 'eq_pain', 'eq_anxiety'];
+    const result = {};
+    dims.forEach((field, i) => {
+      const selected = document.querySelector(`input[name="eq5d-q${i}"]:checked`);
+      result[field] = selected ? parseInt(selected.value) : null;
+    });
+    const vas = document.getElementById('eq5d-vas');
+    result.eq_vas_score = vas ? parseInt(vas.value) : null;
+    return result;
+  },
+
+  // 收集 DTSQ
+  collectDTSQ() {
+    const result = this.collectLikert('dtsq-q', 9);
+    result.dtsq_open_text = document.getElementById('dtsq-open-text')?.value?.trim() || null;
+    return result;
+  },
+
+  // 收集滑杆分值
+  collectSliders(prefix, count) {
+    const scores = [];
+    for (let i = 0; i < count; i++) {
+      const input = document.getElementById(`${prefix}${i}`);
+      scores.push(input ? parseInt(input.value) : 0);
     }
-    return {
-      answers,
-      total_score: parseInt(document.getElementById('gad7-score')?.textContent || 0)
-    };
+    return scores;
   },
 
   // 收集膳食记录
   collectMealRecords() {
     const records = [];
+    const mealNames = ['早餐', '午餐', '晚餐', '加餐'];
     for (let i = 0; i < 4; i++) {
-      const food = document.getElementById(`meal-${i}-food`)?.value;
-      const amount = document.getElementById(`meal-${i}-amount`)?.value;
+      const food = document.getElementById(`meal-${i}-food`)?.value?.trim();
+      const amount = document.getElementById(`meal-${i}-amount`)?.value?.trim();
       if (food) {
-        records.push({ meal_type: ['breakfast', 'lunch', 'dinner', 'snack'][i], food, amount });
+        records.push({ meal_time: mealNames[i], dish_name: food, estimated_amount: amount });
       }
     }
     return records;
   },
 
-  // 收集不良饮食习惯
-  collectBadHabits() {
-    const habits = [];
-    for (let i = 1; i <= 8; i++) {
-      if (document.getElementById(`meal-habit-${i}`)?.checked) {
-        habits.push(i);
+  // ===== 草稿自动保存 =====
+  startAutosave() {
+    this.stopAutosave();
+    this._autosaveTimer = setInterval(() => {
+      if (this.currentVisit && this.currentVisit.status === 'draft') {
+        this.saveAllForms(false); // 静默保存
+      }
+    }, 30000);
+  },
+
+  stopAutosave() {
+    if (this._autosaveTimer) {
+      clearInterval(this._autosaveTimer);
+      this._autosaveTimer = null;
+    }
+  },
+
+  // 展示后端核查告警
+  showWarnings(warnings) {
+    const box = document.getElementById('entry-warnings');
+    const list = document.getElementById('entry-warnings-list');
+    if (!box || !list) return;
+    if (!warnings || !warnings.length) {
+      box.classList.add('hidden');
+      return;
+    }
+    list.innerHTML = warnings.map(w => `<li>${w.message}</li>`).join('');
+    box.classList.remove('hidden');
+  },
+
+  // 提交前必填校验
+  validateForSubmit() {
+    const errors = [];
+    if (!this.currentVisit) {
+      errors.push('请先创建或选择访视');
+    } else if (!this.currentVisit.visit_date) {
+      errors.push('访视日期不能为空');
+    }
+    const height = document.getElementById('pe-height')?.value;
+    const weight = document.getElementById('pe-weight')?.value;
+    if (!height) errors.push('身高为必填项');
+    if (!weight) errors.push('体重为必填项');
+    return errors;
+  },
+
+  // 保存全部表单到后端（各表单独立接口）
+  async saveAllForms(verbose = true) {
+    if (!this.currentVisit) return false;
+    const visitId = this.currentVisit.id;
+    const data = this.collectFormData();
+    const allWarnings = [];
+    const tasks = [
+      ['physical-exam', data.physical_exam],
+      ['lab-results', data.lab_results],
+      ['comorbidity', data.comorbidity],
+      ['cost-indicators', data.cost_indicators],
+      ['medications', { medications: data.medications }],
+      ['lifestyle', data.lifestyle],
+      ['meal-records', { records: data.meal_records }],
+    ];
+    for (const [endpoint, payload] of tasks) {
+      try {
+        const res = await api('POST', `/api/visits/${visitId}/${endpoint}`, payload);
+        if (res.warnings) allWarnings.push(...res.warnings);
+      } catch (e) {
+        if (verbose) showToast(`${endpoint} 保存失败：${e.message}`, 'error');
+        return false;
       }
     }
-    return habits;
-  }
+    // 问卷：逐类型提交
+    for (const qType of ['phq9', 'gad7', 'eq5d', 'dtsq']) {
+      const payload = data.questionnaires[qType];
+      if (Object.values(payload).some(v => v !== null && v !== undefined)) {
+        try {
+          await api('POST', `/api/visits/${visitId}/questionnaire`, {
+            questionnaire_type: qType,
+            ...payload,
+          });
+        } catch (e) {
+          if (verbose) showToast(`${qType} 保存失败：${e.message}`, 'error');
+          return false;
+        }
+      }
+    }
+    this.showWarnings(allWarnings);
+    return true;
+  },
 };
 
 // 显示新建访视模态框
 function showNewVisitModal() {
   if (!VisitEntry.currentPatient) {
-    alert('请先选择患者');
+    showToast('请先在【患者管理】选择患者', 'error');
     return;
   }
   document.getElementById('modal-new-visit').classList.remove('hidden');
@@ -676,43 +993,22 @@ async function submitNewVisit() {
   btn.textContent = '创建中…';
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/patients/${VisitEntry.currentPatient.id}/visits`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      },
-      body: JSON.stringify({
-        visit_type: visitType,
-        visit_date: visitDate,
-        status: 'draft'
-      })
+    const visit = await api('POST', `/api/patients/${VisitEntry.currentPatient.id}/visits`, {
+      visit_type: visitType,
+      visit_date: visitDate,
     });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || '创建访视失败');
-    }
-
-    const visit = await response.json();
     VisitEntry.currentVisit = visit;
 
-    // 更新访视信息显示
-    document.getElementById('entry-visit-type').textContent = {
-      'baseline': '基线访视',
-      'M6': '6个月随访',
-      'M12': '12个月随访',
-      'M18': '18个月随访',
-      'M24': '24个月随访'
-    }[visitType] || visitType;
-    document.getElementById('entry-visit-date').textContent = visitDate;
+    // 刷新访视下拉框并选中
+    await VisitEntry.loadPatientVisits();
 
     // 隐藏提示，显示表单
     document.getElementById('entry-no-visit-tip').style.display = 'none';
     document.getElementById('entry-form-area').style.display = 'block';
 
     closeNewVisitModal();
-    alert('访视创建成功，可以开始录入数据');
+    showToast('✓ 访视创建成功，可以开始录入数据');
   } catch (error) {
     console.error('创建访视失败:', error);
     errEl.textContent = error.message || '创建失败';
@@ -725,40 +1021,59 @@ async function submitNewVisit() {
 // Tab切换
 function switchEntryTab(tabName) {
   // 更新tab按钮状态
-  document.querySelectorAll('.tab-btn').forEach(btn => {
+  document.querySelectorAll('#page-entry .tab-btn').forEach(btn => {
     btn.classList.remove('active');
   });
   event.target.classList.add('active');
 
   // 更新tab内容
-  document.querySelectorAll('.tab-panel').forEach(panel => {
+  document.querySelectorAll('#page-entry .tab-panel').forEach(panel => {
     panel.classList.add('hidden');
   });
   document.getElementById(`tab-${tabName}`).classList.remove('hidden');
+
+  // 切换 tab 时静默保存草稿
+  if (VisitEntry.currentVisit && VisitEntry.currentVisit.status === 'draft') {
+    VisitEntry.saveAllForms(false);
+  }
 }
 
-// 保存访视数据
+// 保存访视数据（draft=存草稿；submitted=保存并提交审核）
 async function saveVisitData(status) {
   try {
-    const data = VisitEntry.collectFormData();
-    data.status = status;
+    if (!VisitEntry.currentVisit) {
+      showToast('请先创建或选择访视', 'error');
+      return;
+    }
+    if (VisitEntry.currentVisit.status === 'locked') {
+      showToast('该访视已锁定，无法修改', 'error');
+      return;
+    }
 
-    const response = await fetch(`${API_BASE_URL}/api/visits/${VisitEntry.currentVisit.id}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      },
-      body: JSON.stringify(data)
-    });
+    if (status === 'submitted') {
+      const errors = VisitEntry.validateForSubmit();
+      if (errors.length) {
+        showToast(errors[0], 'error');
+        return;
+      }
+    }
 
-    if (!response.ok) throw new Error('保存失败');
+    const ok = await VisitEntry.saveAllForms(true);
+    if (!ok) return;
 
-    alert(status === 'draft' ? '草稿已保存' : '已提交审核');
-    showPage('patients', document.querySelectorAll('.sidebar-item')[1]);
+    if (status === 'submitted') {
+      await api('POST', `/api/visits/${VisitEntry.currentVisit.id}/submit`);
+      VisitEntry.currentVisit.status = 'submitted';
+      VisitEntry.updateVisitStatusBadge();
+      if (typeof QcBar !== 'undefined') QcBar.refresh();
+      VisitEntry.stopAutosave();
+      showToast('✓ 已提交审核');
+    } else {
+      showToast('✓ 草稿已保存');
+    }
   } catch (error) {
     console.error('保存失败:', error);
-    alert('保存失败，请重试');
+    showToast('保存失败：' + error.message, 'error');
   }
 }
 

@@ -17,127 +17,155 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('login-overlay').classList.add('hidden');
     document.getElementById('sidebar-username').textContent = user.full_name || user.username;
     loadDashboard();
+    if (typeof Notifs !== 'undefined') Notifs.startPolling();
   }
 });
 
 // ======= 仪表板 =======
+const VISIT_TYPE_LABEL = { baseline: '基线', M6: '6月', M12: '12月', M18: '18月', M24: '24月' };
+const VISIT_STATUS_LABEL = { draft: '草稿', submitted: '待审核', qc_passed: '质控通过', signed: '已签名', locked: '已锁定' };
+
 async function loadDashboard() {
-  try {
-    const stats = await api('GET', '/api/patients/stats');
-
-    // 更新统计数据
-    const statTotal = document.getElementById('stat-total');
-    const statEnrolled = document.getElementById('stat-enrolled');
-    const statPendingEntry = document.getElementById('stat-pending-entry');
-    const statPendingSign = document.getElementById('stat-pending-sign');
-
-    if (statTotal) statTotal.textContent = stats.total || 0;
-    if (statEnrolled) statEnrolled.textContent = `在研患者 ${stats.enrolled || 0}`;
-    if (statPendingEntry) statPendingEntry.textContent = stats.pending_entry || 0;
-    if (statPendingSign) statPendingSign.textContent = stats.pending_sign || 0;
-
-    // 如果元素不存在，说明需要渲染仪表板页面
-    if (!statTotal) {
-      renderDashboardPage(stats);
-    }
-  } catch(e) {
-    console.error('加载仪表板失败:', e);
-    // 显示错误信息
-    const dashboardPage = document.getElementById('page-dashboard');
-    if (dashboardPage) {
-      dashboardPage.innerHTML = `
-        <div class="text-center text-red-500 py-20">
-          <p>加载失败: ${e.message}</p>
-          <button onclick="loadDashboard()" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">重试</button>
-        </div>
-      `;
-    }
+  const page = document.getElementById('page-dashboard');
+  if (!page) return;
+  if (!getToken()) {
+    page.innerHTML = '<div class="text-center text-gray-400 py-20">请先登录</div>';
+    return;
   }
+
+  // 并行拉取：汇总聚合 + 入组进度 + 访视完成率 + 最近患者
+  const [summary, enrollment, completion, recent] = await Promise.all([
+    api('GET', '/api/reports/summary').catch(() => null),
+    api('GET', '/api/reports/enrollment').catch(() => null),
+    api('GET', '/api/reports/visit-completion').catch(() => null),
+    api('GET', '/api/patients/?limit=5').catch(() => null),
+  ]);
+  if (!summary) {
+    page.innerHTML = `
+      <div class="text-center text-red-500 py-20">
+        <p>看板加载失败</p>
+        <button onclick="loadDashboard()" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">重试</button>
+      </div>`;
+    return;
+  }
+  renderDashboardPage(summary, enrollment, completion, recent);
 }
 
-function renderDashboardPage(stats) {
+function renderDashboardPage(summary, enrollment, completion, recent) {
   const dashboardPage = document.getElementById('page-dashboard');
   if (!dashboardPage) return;
 
+  const visits = summary.visits_by_status || {};
+  const pendingReview = (visits.submitted || 0) + (visits.qc_passed || 0);
+
+  // 最近患者表（中心隔离，只能看到自己可访问的患者）
+  const patients = (recent && recent.items) || [];
+  const recentRows = patients.length ? patients.map(p => `
+    <tr class="border-b border-gray-50 hover:bg-gray-50">
+      <td class="px-4 py-2.5 font-mono text-sm">${p.patient_code}</td>
+      <td class="px-4 py-2.5 text-sm">${p.full_name || p.name_initials || '-'}</td>
+      <td class="px-4 py-2.5 text-sm">${p.gender === 'male' ? '男' : p.gender === 'female' ? '女' : '-'}</td>
+      <td class="px-4 py-2.5 text-sm">${p.age ?? '-'}</td>
+      <td class="px-4 py-2.5 text-sm">${p.center_code || '-'}</td>
+      <td class="px-4 py-2.5 text-sm">${VISIT_STATUS_LABEL[p.latest_visit_status] || '未建访视'}</td>
+      <td class="px-4 py-2.5 text-sm">${p.has_consent ? '<span class="text-green-500">已签署</span>' : '<span class="text-orange-500">未签署</span>'}</td>
+    </tr>`).join('') : '<tr><td colspan="7" class="text-center text-gray-400 py-8">暂无患者，请先在「患者管理」中建档</td></tr>';
+
+  // 入组进度（按中心，横向条形）
+  const byCenter = (enrollment && enrollment.by_center) || [];
+  const maxCenter = Math.max(1, ...byCenter.map(c => c.total));
+  const centerBars = byCenter.length ? byCenter.map(c => `
+    <div class="mb-2.5">
+      <div class="flex items-center justify-between text-xs mb-1">
+        <span class="text-gray-600">${c.center_code} ${c.center_name}</span>
+        <span class="font-medium text-gray-800">${c.total}</span>
+      </div>
+      <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+        <div class="h-full bg-blue-500 rounded-full" style="width:${Math.round(c.total / maxCenter * 100)}%"></div>
+      </div>
+    </div>`).join('') : '<div class="text-center text-gray-400 py-4 text-sm">暂无入组数据</div>';
+
+  // 访视完成率
+  const items = (completion && completion.items) || [];
+  const completionRows = items.length ? items.map(i => `
+    <tr class="border-b border-gray-50">
+      <td class="px-3 py-2 text-sm">${VISIT_TYPE_LABEL[i.visit_type] || i.visit_type}</td>
+      <td class="px-3 py-2 text-sm text-center">${i.total}</td>
+      <td class="px-3 py-2 text-sm text-center">${i.done}</td>
+      <td class="px-3 py-2 text-sm">
+        <div class="flex items-center gap-2">
+          <div class="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div class="h-full ${i.rate >= 80 ? 'bg-green-500' : i.rate >= 40 ? 'bg-blue-500' : 'bg-orange-400'} rounded-full" style="width:${i.rate}%"></div>
+          </div>
+          <span class="text-xs text-gray-500 w-10 text-right">${i.rate}%</span>
+        </div>
+      </td>
+    </tr>`).join('') : '<tr><td colspan="4" class="text-center text-gray-400 py-4 text-sm">暂无访视数据</td></tr>';
+
   dashboardPage.innerHTML = `
-    <div class="grid grid-cols-4 gap-4 mb-6">
-      <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
-        <div class="text-xs text-gray-400 mb-1">患者总数</div>
-        <div id="stat-total" class="text-3xl font-bold text-gray-800">${stats.total || 0}</div>
-        <div id="stat-enrolled" class="text-xs text-green-500 mt-1">在研患者 ${stats.enrolled || 0}</div>
+    <div class="max-w-6xl mx-auto">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+          <div class="text-xs text-gray-400 mb-1">在研患者总数</div>
+          <div class="text-3xl font-bold text-gray-800">${summary.patients_total || 0}</div>
+          <div class="text-xs text-gray-400 mt-1">本月新入组 ${summary.patients_enrolled_this_month || 0}</div>
+        </div>
+        <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+          <div class="text-xs text-gray-400 mb-1">访视总数</div>
+          <div class="text-3xl font-bold text-blue-600">${summary.visits_total || 0}</div>
+          <div class="text-xs text-gray-400 mt-1">待审核/待签名 ${pendingReview}</div>
+        </div>
+        <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+          <div class="text-xs text-gray-400 mb-1">未关闭质疑</div>
+          <div class="text-3xl font-bold ${summary.open_queries ? 'text-orange-500' : 'text-gray-800'}">${summary.open_queries || 0}</div>
+          <div class="text-xs text-gray-400 mt-1">质控待处理</div>
+        </div>
+        <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+          <div class="text-xs text-gray-400 mb-1">不良事件</div>
+          <div class="text-3xl font-bold ${summary.adverse_events_total ? 'text-red-500' : 'text-gray-800'}">${summary.adverse_events_total || 0}</div>
+          <div class="text-xs text-gray-400 mt-1">累计记录</div>
+        </div>
       </div>
-      <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
-        <div class="text-xs text-gray-400 mb-1">待完成表单</div>
-        <div id="stat-pending-entry" class="text-3xl font-bold text-orange-500">${stats.pending_entry || 0}</div>
-        <div class="text-xs text-gray-400 mt-1">需要录入</div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5 lg:col-span-2">
+          <h3 class="text-sm font-semibold text-gray-700 mb-4">最近患者</h3>
+          <div class="overflow-x-auto">
+            <table class="w-full">
+              <thead>
+                <tr class="text-xs text-gray-400 border-b border-gray-100">
+                  <th class="px-4 py-2 text-left font-medium">患者编号</th>
+                  <th class="px-4 py-2 text-left font-medium">姓名</th>
+                  <th class="px-4 py-2 text-left font-medium">性别</th>
+                  <th class="px-4 py-2 text-left font-medium">年龄</th>
+                  <th class="px-4 py-2 text-left font-medium">中心</th>
+                  <th class="px-4 py-2 text-left font-medium">最近访视</th>
+                  <th class="px-4 py-2 text-left font-medium">知情同意</th>
+                </tr>
+              </thead>
+              <tbody>${recentRows}</tbody>
+            </table>
+          </div>
+        </div>
+        <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+          <h3 class="text-sm font-semibold text-gray-700 mb-4">各中心入组进度</h3>
+          ${centerBars}
+        </div>
       </div>
-      <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
-        <div class="text-xs text-gray-400 mb-1">待签名表单</div>
-        <div id="stat-pending-sign" class="text-3xl font-bold text-blue-600">${stats.pending_sign || 0}</div>
-        <div class="text-xs text-gray-400 mt-1">待研究者确认</div>
-      </div>
-      <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
-        <div class="text-xs text-gray-400 mb-1">数据库状态</div>
-        <div class="text-3xl font-bold text-green-600">✓</div>
-        <div class="text-xs text-gray-400 mt-1">连接正常</div>
-      </div>
-    </div>
-    <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-      <h3 class="text-lg font-semibold text-gray-800 mb-4">最近患者</h3>
-      <div class="text-center text-gray-400 py-8">暂无数据</div>
-    </div>
-  `;
-}
 
-// ======= 数据录入 =======
-async function loadEntry() {
-  const entryPage = document.getElementById('page-entry');
-  if (!entryPage) return;
-
-  entryPage.innerHTML = `
-    <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-      <h3 class="text-lg font-semibold text-gray-800 mb-4">数据录入</h3>
-      <div class="text-center text-gray-400 py-20">
-        <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-        </svg>
-        <p>功能开发中...</p>
-      </div>
-    </div>
-  `;
-}
-
-// ======= 知情同意 =======
-async function loadConsent() {
-  const consentPage = document.getElementById('page-consent');
-  if (!consentPage) return;
-
-  consentPage.innerHTML = `
-    <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-      <h3 class="text-lg font-semibold text-gray-800 mb-4">知情同意书管理</h3>
-      <div class="text-center text-gray-400 py-20">
-        <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-        </svg>
-        <p>功能开发中...</p>
-      </div>
-    </div>
-  `;
-}
-
-// ======= 已录入患者 =======
-async function loadRecordedPatients() {
-  const recordedPage = document.getElementById('page-recorded');
-  if (!recordedPage) return;
-
-  recordedPage.innerHTML = `
-    <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-      <h3 class="text-lg font-semibold text-gray-800 mb-4">已录入患者</h3>
-      <div class="text-center text-gray-400 py-20">
-        <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-        </svg>
-        <p>功能开发中...</p>
+      <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+        <h3 class="text-sm font-semibold text-gray-700 mb-3">访视完成率</h3>
+        <table class="w-full">
+          <thead>
+            <tr class="text-xs text-gray-400 border-b border-gray-100">
+              <th class="px-3 py-2 text-left font-medium">访视类型</th>
+              <th class="px-3 py-2 text-center font-medium">已建访视</th>
+              <th class="px-3 py-2 text-center font-medium">已完成</th>
+              <th class="px-3 py-2 text-left font-medium">完成率</th>
+            </tr>
+          </thead>
+          <tbody>${completionRows}</tbody>
+        </table>
       </div>
     </div>
   `;

@@ -13,9 +13,9 @@ class Visit(Base):
         nullable=False
     )
     visit_date = Column(Date, nullable=False)
-    # 状态流转：draft → submitted → signed → locked
+    # 状态流转：draft →(submit)→ submitted →(qc-review)→ qc_passed →(sign)→ signed →(lock)→ locked
     status = Column(
-        Enum("draft", "submitted", "signed", "locked"),
+        Enum("draft", "submitted", "qc_passed", "signed", "locked"),
         default="draft"
     )
     created_by = Column(Integer)

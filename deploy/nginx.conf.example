@@ -1,0 +1,85 @@
+# Nginx 反向代理模板：一个入口按路径分发到各项目实例
+# 本地验证：docker compose -f docker-compose.multi.yml up 后访问
+#   http://localhost/project-a/  →  edc-project-a (内部 8001)
+#   http://localhost/project-b/  →  edc-project-b (内部 8002)
+#
+# 生产：把 server_name 换成真实域名，启用下方 443 段并配置证书。
+
+upstream edc_project_a { server backend-a:8001; }
+upstream edc_project_b { server backend-b:8002; }
+
+server {
+    listen 80;
+    server_name _;  # 生产换成实际域名，如 edc.example-hospital.cn
+
+    client_max_body_size 20m;  # 知情同意扫描件上传
+
+    # ── 项目 A ──────────────────────────────
+    # 页面与静态资源
+    location /project-a/ {
+        proxy_pass http://edc_project_a/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    # API（后端路由本身带 /api 前缀）
+    location /project-a/api/ {
+        proxy_pass http://edc_project_a/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # ── 项目 B ──────────────────────────────
+    location /project-b/ {
+        proxy_pass http://edc_project_b/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    location /project-b/api/ {
+        proxy_pass http://edc_project_b/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # 根路径：项目导航页（可换成静态落地页）
+    location = / {
+        default_type text/html;
+        return 200 '<html><body style="font-family:sans-serif;text-align:center;padding-top:80px">
+<h2>多中心 EDC 系统入口</h2>
+<p><a href="/project-a/">进入项目 A</a></p>
+<p><a href="/project-b/">进入项目 B</a></p>
+</body></html>';
+    }
+}
+
+# ── HTTPS（生产启用）──────────────────────────────
+# server {
+#     listen 443 ssl;
+#     http2 on;
+#     server_name edc.example-hospital.cn;  # 真实域名
+#
+#     ssl_certificate     /etc/nginx/certs/fullchain.pem;    # 证书路径
+#     ssl_certificate_key /etc/nginx/certs/privkey.pem;
+#     ssl_protocols TLSv1.2 TLSv1.3;
+#
+#     client_max_body_size 20m;
+#
+#     location /project-a/ { proxy_pass http://edc_project_a/; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto https; }
+#     location /project-a/api/ { proxy_pass http://edc_project_a/api/; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto https; }
+#     location /project-b/ { proxy_pass http://edc_project_b/; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto https; }
+#     location /project-b/api/ { proxy_pass http://edc_project_b/api/; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto https; }
+# }
+#
+# # HTTP 全部跳转 HTTPS
+# server {
+#     listen 80;
+#     server_name edc.example-hospital.cn;
+#     return 301 https://$host$request_uri;
+# }

@@ -13,8 +13,9 @@ from app.database import Base, engine
 
 # 导入所有 Model，确保 Alembic 能感知到全部表
 from app.models import (  # noqa: F401
-    user, patient, visit, forms, medication,
-    questionnaire, lifestyle, consent
+    center, user, patient, visit, forms, medication,
+    questionnaire, lifestyle, consent,
+    adverse_event, audit_log, query, notification
 )
 
 config = context.config

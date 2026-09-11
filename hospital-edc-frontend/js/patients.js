@@ -9,9 +9,10 @@ const genderLabel = { male: '男', female: '女' };
 const statusColorApi = {
   enrolled: 'bg-blue-100 text-blue-700',
   completed: 'bg-green-100 text-green-700',
+  dropout: 'bg-orange-100 text-orange-700',
   withdrawn: 'bg-gray-100 text-gray-500',
 };
-const statusLabelApi = { enrolled: '在研', completed: '已完成', withdrawn: '已退出' };
+const statusLabelApi = { enrolled: '在研', completed: '已完成', dropout: '已脱落', withdrawn: '已退出' };
 
 // 加载患者列表
 async function loadPatients(search) {
@@ -126,10 +127,9 @@ function closeCreatePatientModal() {
   document.getElementById('modal-create-patient').classList.add('hidden');
   document.getElementById('cp-error').textContent = '';
   // 清空表单
-  document.getElementById('cp-initials').value = '';
-  document.getElementById('cp-gender').value = '';
-  document.getElementById('cp-age').value = '';
-  document.getElementById('cp-enroll').value = '';
+  ['cp-initials', 'cp-fullname', 'cp-idcard', 'cp-phone', 'cp-gender', 'cp-age', 'cp-marital', 'cp-enroll'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
 }
 
 // 提交创建患者
@@ -141,6 +141,10 @@ async function submitCreatePatient() {
   const gender = document.getElementById('cp-gender').value;
   const age = document.getElementById('cp-age').value;
   const enroll = document.getElementById('cp-enroll').value;
+  const fullName = document.getElementById('cp-fullname').value.trim();
+  const idCard = document.getElementById('cp-idcard').value.trim();
+  const phone = document.getElementById('cp-phone').value.trim();
+  const marital = document.getElementById('cp-marital').value;
 
   if (!initials) {
     errEl.textContent = '请填写姓名首字母';
@@ -160,8 +164,11 @@ async function submitCreatePatient() {
       gender,
       age: age ? parseInt(age) : null,
       enrollment_date: enroll || null,
-      center_code: 'CHN-017',
     };
+    if (fullName) payload.full_name = fullName;
+    if (idCard) payload.id_card = idCard;
+    if (phone) payload.phone = phone;
+    if (marital) payload.marital_status = parseInt(marital);
     const p = await api('POST', '/api/patients/', payload);
     if (!p) return;
     closeCreatePatientModal();
@@ -178,10 +185,11 @@ async function submitCreatePatient() {
 }
 
 // Toast提示函数
-function showToast(message) {
+function showToast(message, type = 'success') {
   // 创建toast元素
   const toast = document.createElement('div');
-  toast.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+  const cls = type === 'error' ? 'bg-red-500' : 'bg-green-500';
+  toast.className = `fixed top-4 right-4 ${cls} text-white px-4 py-2 rounded-lg shadow-lg z-50`;
   toast.textContent = message;
   document.body.appendChild(toast);
 

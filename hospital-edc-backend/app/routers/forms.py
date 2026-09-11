@@ -11,33 +11,47 @@ from app.schemas.forms import (
     PhysicalExamIn, LabResultsIn, ComorbidityIn, CostIndicatorIn,
     MedicationBatchIn, QuestionnaireIn, LifestyleIn, MealRecordBatchIn,
 )
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, get_accessible_center_ids
 from app.services.scoring import (
     calc_phq9_level, calc_gad7_level,
     calc_diet_level, calc_exercise_level,
 )
+from app.services.validation import check_physical_exam, check_lab_results
+from app.services.audit import log_change, diff_model
 
 router = APIRouter(prefix="/api/visits", tags=["表单录入"])
 
 
-#  辅助函数 
-def _get_unlocked_visit(visit_id: int, db: Session) -> Visit:
+#  辅助函数
+def _get_unlocked_visit(visit_id: int, db: Session, current_user=None) -> Visit:
     visit = db.query(Visit).filter(Visit.id == visit_id).first()
     if not visit:
         raise HTTPException(404, "访视记录不存在")
     if visit.status == "locked":
         raise HTTPException(400, "该访视已锁定，无法修改数据")
+    # 中心隔离：非总中心用户只能操作本中心的访视
+    if current_user is not None:
+        accessible = get_accessible_center_ids(current_user)
+        if accessible is not None and visit.patient.center_id not in accessible:
+            raise HTTPException(403, "无权访问该访视")
     return visit
 
 
-def _upsert(db: Session, model_cls, filter_kwargs: dict, data: dict):
+def _upsert(db: Session, model_cls, filter_kwargs: dict, data: dict, current_user=None):
     obj = db.query(model_cls).filter_by(**filter_kwargs).first()
     if obj:
+        diff = diff_model(obj, data)
         for k, v in data.items():
             setattr(obj, k, v)
+        if diff and current_user is not None:
+            log_change(db, current_user, model_cls.__tablename__, obj.id, diff, "update")
     else:
         obj = model_cls(**filter_kwargs, **data)
         db.add(obj)
+        db.flush()
+        if current_user is not None:
+            log_change(db, current_user, model_cls.__tablename__, obj.id,
+                       {k: (None, v) for k, v in data.items()}, "create")
     db.commit()
     db.refresh(obj)
     return obj
@@ -60,15 +74,19 @@ def get_physical_exam(visit_id: int, db: Session = Depends(get_db), current_user
 
 @router.post("/{visit_id}/physical-exam")
 def save_physical_exam(visit_id: int, data: PhysicalExamIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    _get_unlocked_visit(visit_id, db)
+    _get_unlocked_visit(visit_id, db, current_user)
     payload = data.model_dump(exclude_unset=True)
     existing = db.query(PhysicalExam).filter_by(visit_id=visit_id).first()
     h_cm = payload.get("height_cm") or (existing.height_cm if existing else None)
     w_kg = payload.get("weight_kg") or (existing.weight_kg if existing else None)
     if h_cm and w_kg:
         payload["bmi"] = round(w_kg / ((h_cm / 100) ** 2), 1)
-    _upsert(db, PhysicalExam, {"visit_id": visit_id}, payload)
-    return {"message": "体格检查保存成功", "bmi": payload.get("bmi")}
+    _upsert(db, PhysicalExam, {"visit_id": visit_id}, payload, current_user)
+    return {
+        "message": "体格检查保存成功",
+        "bmi": payload.get("bmi"),
+        "warnings": check_physical_exam(payload),
+    }
 
 
 #  实验室检查 
@@ -82,9 +100,10 @@ def get_lab_results(visit_id: int, db: Session = Depends(get_db), current_user=D
 
 @router.post("/{visit_id}/lab-results")
 def save_lab_results(visit_id: int, data: LabResultsIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    _get_unlocked_visit(visit_id, db)
-    _upsert(db, LabResults, {"visit_id": visit_id}, data.model_dump(exclude_unset=True))
-    return {"message": "实验室检查保存成功"}
+    _get_unlocked_visit(visit_id, db, current_user)
+    payload = data.model_dump(exclude_unset=True)
+    _upsert(db, LabResults, {"visit_id": visit_id}, payload, current_user)
+    return {"message": "实验室检查保存成功", "warnings": check_lab_results(payload)}
 
 
 #  合并症 
@@ -98,8 +117,8 @@ def get_comorbidity(visit_id: int, db: Session = Depends(get_db), current_user=D
 
 @router.post("/{visit_id}/comorbidity")
 def save_comorbidity(visit_id: int, data: ComorbidityIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    _get_unlocked_visit(visit_id, db)
-    _upsert(db, Comorbidity, {"visit_id": visit_id}, data.model_dump(exclude_unset=True))
+    _get_unlocked_visit(visit_id, db, current_user)
+    _upsert(db, Comorbidity, {"visit_id": visit_id}, data.model_dump(exclude_unset=True), current_user)
     return {"message": "合并症保存成功"}
 
 
@@ -114,8 +133,8 @@ def get_cost_indicators(visit_id: int, db: Session = Depends(get_db), current_us
 
 @router.post("/{visit_id}/cost-indicators")
 def save_cost_indicators(visit_id: int, data: CostIndicatorIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    _get_unlocked_visit(visit_id, db)
-    _upsert(db, CostIndicator, {"visit_id": visit_id}, data.model_dump(exclude_unset=True))
+    _get_unlocked_visit(visit_id, db, current_user)
+    _upsert(db, CostIndicator, {"visit_id": visit_id}, data.model_dump(exclude_unset=True), current_user)
     return {"message": "费用数据保存成功"}
 
 
@@ -127,7 +146,7 @@ def get_medications(visit_id: int, db: Session = Depends(get_db), current_user=D
 
 @router.post("/{visit_id}/medications")
 def save_medications(visit_id: int, data: MedicationBatchIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    _get_unlocked_visit(visit_id, db)
+    _get_unlocked_visit(visit_id, db, current_user)
     db.query(Medication).filter(Medication.visit_id == visit_id).delete()
     for med in data.medications:
         db.add(Medication(visit_id=visit_id, **med.model_dump(exclude_unset=True)))
@@ -146,7 +165,7 @@ def get_questionnaire(visit_id: int, q_type: str, db: Session = Depends(get_db),
 
 @router.post("/{visit_id}/questionnaire")
 def save_questionnaire(visit_id: int, data: QuestionnaireIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    _get_unlocked_visit(visit_id, db)
+    _get_unlocked_visit(visit_id, db, current_user)
     payload = data.model_dump(exclude_unset=True)
     q_type = data.questionnaire_type
     if q_type == "phq9":
@@ -182,7 +201,7 @@ def get_lifestyle(visit_id: int, db: Session = Depends(get_db), current_user=Dep
 
 @router.post("/{visit_id}/lifestyle")
 def save_lifestyle(visit_id: int, data: LifestyleIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    _get_unlocked_visit(visit_id, db)
+    _get_unlocked_visit(visit_id, db, current_user)
     payload = data.model_dump(exclude_unset=True)
     if "diet_scores_json" in payload:
         scores = json.loads(payload["diet_scores_json"])
@@ -194,7 +213,7 @@ def save_lifestyle(visit_id: int, data: LifestyleIn, db: Session = Depends(get_d
         total = sum(scores) if isinstance(scores, list) else sum(scores.values())
         payload["exercise_total"] = total
         payload["exercise_level"] = calc_exercise_level(total)
-    _upsert(db, LifestyleAssessment, {"visit_id": visit_id}, payload)
+    _upsert(db, LifestyleAssessment, {"visit_id": visit_id}, payload, current_user)
     return {
         "message": "生活方式评估保存成功",
         "diet_total": payload.get("diet_total"),
@@ -212,7 +231,7 @@ def get_meal_records(visit_id: int, db: Session = Depends(get_db), current_user=
 
 @router.post("/{visit_id}/meal-records")
 def save_meal_records(visit_id: int, data: MealRecordBatchIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    _get_unlocked_visit(visit_id, db)
+    _get_unlocked_visit(visit_id, db, current_user)
     db.query(MealRecord).filter(MealRecord.visit_id == visit_id).delete()
     for rec in data.records:
         db.add(MealRecord(visit_id=visit_id, **rec.model_dump(exclude_unset=True)))

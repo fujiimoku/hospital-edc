@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+
+# 环境配置（含密钥，不入库；模板见 .env.example / .env.project-*）
+hospital-edc-backend/.env
+
+# 运行产物
+hospital-edc-backend/uploads/
+*.log

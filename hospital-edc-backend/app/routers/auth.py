@@ -10,6 +10,7 @@ from app.dependencies import (
     verify_password, hash_password,
     create_access_token, get_current_user, require_admin,
 )
+from app.services.audit import log_action
 
 router = APIRouter(prefix="/api/auth", tags=["认证"])
 
@@ -24,6 +25,9 @@ def login(
         raise HTTPException(status_code=401, detail="用户名或密码错误")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="账号已被禁用")
+    # 登录审计
+    log_action(db, user, "users", user.id, "login", f"用户 {user.username} 登录")
+    db.commit()
     token = create_access_token({"sub": user.username, "role": user.role})
     return {
         "access_token": token,

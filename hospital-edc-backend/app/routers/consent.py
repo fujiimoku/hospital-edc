@@ -29,6 +29,8 @@ def get_consent(
 @router.post("/{patient_id}", response_model=ConsentOut)
 async def save_consent(
     patient_id: int,
+    # 知情同意书版本号（如 V1.0）
+    consent_version: Optional[str] = Form(None),
     # 受试者
     subject_signed_date: Optional[str] = Form(None),
     subject_contact: Optional[str] = Form(None),
@@ -72,6 +74,7 @@ async def save_consent(
 
     record = db.query(ConsentRecord).filter(ConsentRecord.patient_id == patient_id).first()
     fields = {
+        "consent_version": consent_version,
         "subject_signed_date": _to_date(subject_signed_date),
         "subject_contact": subject_contact,
         "proxy_name": proxy_name,

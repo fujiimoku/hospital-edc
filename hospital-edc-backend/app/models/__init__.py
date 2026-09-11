@@ -8,3 +8,7 @@ from app.models.medication import Medication  # noqa
 from app.models.questionnaire import Questionnaire  # noqa
 from app.models.lifestyle import LifestyleAssessment, MealRecord  # noqa
 from app.models.consent import ConsentRecord  # noqa
+from app.models.adverse_event import AdverseEvent  # noqa
+from app.models.audit_log import AuditLog  # noqa
+from app.models.query import Query  # noqa
+from app.models.notification import Notification  # noqa

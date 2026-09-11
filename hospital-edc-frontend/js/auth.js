@@ -39,10 +39,12 @@ function onLoginSuccess(user) {
   const name = user.full_name || user.username;
   document.getElementById('sidebar-username').textContent = name;
   loadDashboard();
+  if (typeof Notifs !== 'undefined') Notifs.startPolling();
 }
 
 function doLogout() {
   clearToken();
+  sessionStorage.removeItem('currentPatient');  // 切换账号时不残留上一账号的患者
   document.getElementById('login-overlay').classList.remove('hidden');
   document.getElementById('login-username').value = '';
   document.getElementById('login-password').value = '';

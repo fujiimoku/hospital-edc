@@ -9,6 +9,9 @@ class ConsentRecord(Base):
     id = Column(Integer, primary_key=True)
     patient_id = Column(Integer, ForeignKey("patients.id"), unique=True, nullable=False)
 
+    # 知情同意书版本号（如 V1.0 / V2.0-20260301）
+    consent_version = Column(String(50))
+
     # 受试者
     subject_signed_date = Column(Date)
     subject_contact = Column(String(50))

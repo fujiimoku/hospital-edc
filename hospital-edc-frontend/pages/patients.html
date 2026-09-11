@@ -37,6 +37,10 @@
         <label class="text-xs text-gray-500 mb-1 block">姓名首字母 <span class="text-red-400">*</span></label>
         <input id="cp-initials" type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="如 AZL"/>
       </div>
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">患者姓名（加密存储）</label>
+        <input id="cp-fullname" type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="如 张三"/>
+      </div>
       <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="text-xs text-gray-500 mb-1 block">性别 <span class="text-red-400">*</span></label>
@@ -51,9 +55,31 @@
           <input id="cp-age" type="number" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="岁"/>
         </div>
       </div>
-      <div>
-        <label class="text-xs text-gray-500 mb-1 block">入组日期</label>
-        <input id="cp-enroll" type="date" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-gray-500 mb-1 block">身份证号（加密存储）</label>
+          <input id="cp-idcard" type="text" maxlength="18" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="18 位身份证号"/>
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 mb-1 block">联系电话</label>
+          <input id="cp-phone" type="text" maxlength="20" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="手机号"/>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-gray-500 mb-1 block">婚姻状况</label>
+          <select id="cp-marital" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400">
+            <option value="">请选择</option>
+            <option value="1">未婚</option>
+            <option value="2">已婚</option>
+            <option value="3">离异</option>
+            <option value="4">丧偶</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 mb-1 block">入组日期</label>
+          <input id="cp-enroll" type="date" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"/>
+        </div>
       </div>
       <div id="cp-error" class="text-red-500 text-xs min-h-4"></div>
       <div class="flex gap-3 pt-1">
