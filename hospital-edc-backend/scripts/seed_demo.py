@@ -56,15 +56,11 @@ def clean_demo_data(db):
     visit_ids = [v.id for v in db.query(Visit).filter(Visit.patient_id.in_(patient_ids)).all()] if patient_ids else []
 
     if visit_ids:
-        # 不良事件带 visit_id 外键，必须先于访视删除
-        db.query(AdverseEvent).filter(AdverseEvent.visit_id.in_(visit_ids)).delete(synchronize_session=False)
-        db.query(Query).filter(Query.visit_id.in_(visit_ids)).delete(synchronize_session=False)
-        db.query(Questionnaire).filter(Questionnaire.visit_id.in_(visit_ids)).delete(synchronize_session=False)
-        db.query(Medication).filter(Medication.visit_id.in_(visit_ids)).delete(synchronize_session=False)
-        db.query(PhysicalExam).filter(PhysicalExam.visit_id.in_(visit_ids)).delete(synchronize_session=False)
-        db.query(LabResults).filter(LabResults.visit_id.in_(visit_ids)).delete(synchronize_session=False)
-        db.query(Comorbidity).filter(Comorbidity.visit_id.in_(visit_ids)).delete(synchronize_session=False)
-        db.query(CostIndicator).filter(CostIndicator.visit_id.in_(visit_ids)).delete(synchronize_session=False)
+        # 动态清理：凡带 visit_id 外键的子表（表单/量表/质疑/不良事件/生活方式等）
+        # 一律先于访视删除，避免外键约束 1451 —— 以后新增子表也无需改这里
+        for table in Base.metadata.tables.values():
+            if table.name != "visits" and "visit_id" in table.c:
+                db.execute(table.delete().where(table.c.visit_id.in_(visit_ids)))
         db.query(Visit).filter(Visit.id.in_(visit_ids)).delete(synchronize_session=False)
     if patient_ids:
         db.query(AdverseEvent).filter(AdverseEvent.patient_id.in_(patient_ids)).delete(synchronize_session=False)
