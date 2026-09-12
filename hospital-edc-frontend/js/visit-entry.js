@@ -105,11 +105,16 @@ const VisitEntry = {
         const statusLabel = { draft: '草稿', submitted: '待审核', qc_passed: '质控通过', signed: '已签名', locked: '已锁定' }[v.status] || v.status;
         return `<option value="${v.id}">${typeLabel}（${v.visit_date}）· ${statusLabel}</option>`;
       }).join('');
-      // 自动选中最新草稿（或最新一条）；无访视时停留在"请先创建访视"提示
-      const draft = visits.find(v => v.status === 'draft') || visits[visits.length - 1];
-      if (draft) {
-        select.value = String(draft.id);
-        this.onVisitSelect(draft.id);
+      // 自动选中最新草稿（或最新一条）；无访视时停留在"请先创建访视"提示。
+      // 从质控审计页跳转时（pendingVisitId），优先定位到指定访视
+      const pendingId = parseInt(sessionStorage.getItem('pendingVisitId'));
+      sessionStorage.removeItem('pendingVisitId');
+      const target = (pendingId && visits.find(v => v.id === pendingId))
+        || visits.find(v => v.status === 'draft')
+        || visits[visits.length - 1];
+      if (target) {
+        select.value = String(target.id);
+        this.onVisitSelect(target.id);
       }
     } catch (e) {
       console.error('加载访视列表失败:', e);

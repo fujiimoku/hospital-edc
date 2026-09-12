@@ -17,6 +17,7 @@ function showPage(name, el) {
     entry:'数据录入',
     consent:'知情同意书',
     recorded:'已录入患者',
+    review:'质控审计',
     export:'数据导出'
   };
   document.getElementById('page-title').textContent = titles[name] || name;
@@ -28,6 +29,7 @@ function showPage(name, el) {
   if (name === 'dashboard') loadDashboard();
   if (name === 'consent') loadConsent();
   if (name === 'recorded') loadRecordedPatients();
+  if (name === 'review') loadReview();
   if (name === 'entry') loadEntry();
   if (name === 'export') loadExport();
 }
@@ -136,6 +138,32 @@ async function loadRecordedPatients() {
   }
   if (typeof RecordedPage !== 'undefined') {
     RecordedPage.init();
+  }
+}
+
+// 加载质控审计页面
+async function loadReview() {
+  const pageEl = document.getElementById('page-review');
+
+  if (!getToken()) {
+    pageEl.innerHTML = '<div class="text-center text-gray-400 py-20">请先登录</div>';
+    return;
+  }
+
+  if (!pageEl.hasAttribute('data-loaded')) {
+    try {
+      const response = await fetch('pages/review.html?v=20260912a');
+      const html = await response.text();
+      pageEl.innerHTML = html;
+      pageEl.setAttribute('data-loaded', 'true');
+    } catch (e) {
+      console.error('加载页面失败:', e);
+      pageEl.innerHTML = '<div class="text-center text-red-400 py-20">页面加载失败: ' + e.message + '</div>';
+      return;
+    }
+  }
+  if (typeof ReviewPage !== 'undefined') {
+    ReviewPage.init();
   }
 }
 

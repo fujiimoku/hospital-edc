@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from app.routers import auth, patients, visits, forms, consent, centers, invitation_codes, adverse_events, queries, export, audit, reports, notifications
+from app.routers import auth, patients, visits, forms, consent, centers, invitation_codes, adverse_events, queries, export, audit, reports, notifications, review
 from app.database import engine, Base
 import app.models  # noqa: 确保所有 Model 在启动时被注册
 import os
@@ -60,6 +60,7 @@ app.include_router(export.router)
 app.include_router(audit.router)
 app.include_router(reports.router)
 app.include_router(notifications.router)
+app.include_router(review.router)
 
 # ── 前端静态文件托管 ──────────────────────────────────────────
 # 前端目录定位，兼容两种布局：

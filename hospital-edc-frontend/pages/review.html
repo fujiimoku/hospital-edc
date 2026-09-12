@@ -1,0 +1,64 @@
+<!-- 质控审计页：待办质疑 + 待办访视状态流转的集中处理入口 -->
+<div class="max-w-6xl mx-auto">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-lg font-bold text-gray-800">质控审计</h2>
+    <button onclick="ReviewPage.refresh()" class="text-blue-600 text-sm hover:text-blue-700 flex items-center gap-1.5">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>刷新
+    </button>
+  </div>
+
+  <!-- 待办统计卡 -->
+  <div id="review-cards" class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+    <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm text-center text-gray-300">加载中…</div>
+  </div>
+
+  <!-- 待办质疑 -->
+  <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5 mb-6">
+    <h3 class="text-sm font-semibold text-gray-700 mb-1">待办质疑</h3>
+    <p class="text-xs text-gray-400 mb-4">质控员提出的字段疑问。「待答复」需研究者回复，「已答复」需质控员确认后关闭。</p>
+    <div id="review-query-list" class="space-y-2.5">
+      <div class="text-center text-gray-400 py-6 text-sm">加载中…</div>
+    </div>
+  </div>
+
+  <!-- 待办访视 -->
+  <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+    <h3 class="text-sm font-semibold text-gray-700 mb-1">待办访视</h3>
+    <p class="text-xs text-gray-400 mb-4">按流转阶段分组：待质控审核 → 待研究者签名 → 待管理员锁定。可直接就地操作，或打开详情查看数据。</p>
+    <div id="review-visit-list" class="space-y-5">
+      <div class="text-center text-gray-400 py-6 text-sm">加载中…</div>
+    </div>
+  </div>
+</div>
+
+<!-- 提质控质疑模态框（复用录入页的字段选择 + 质疑内容结构） -->
+<div id="modal-review-query" class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" style="display:none">
+  <div class="bg-white rounded-xl w-full max-w-md p-6 shadow-xl">
+    <h3 class="text-base font-bold text-gray-800 mb-4">提出质控质疑</h3>
+    <div class="space-y-3">
+      <div>
+        <label class="text-xs font-medium text-gray-600 block mb-1.5">被质疑字段</label>
+        <select id="rq2-field" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400">
+          <option value="一般">一般（未指定具体字段）</option>
+          <option value="体格检查">体格检查</option>
+          <option value="实验室检查">实验室检查</option>
+          <option value="合并症">合并症</option>
+          <option value="用药信息">用药信息</option>
+          <option value="费用指标">费用指标</option>
+          <option value="量表问卷">量表问卷</option>
+          <option value="生活方式">生活方式</option>
+          <option value="三餐记录">三餐记录</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs font-medium text-gray-600 block mb-1.5">质疑内容</label>
+        <textarea id="rq2-content" rows="4" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="请描述该字段存在的问题…"></textarea>
+      </div>
+      <div id="rq2-error" class="text-xs text-red-500"></div>
+      <div class="flex justify-end gap-2 pt-1">
+        <button onclick="ReviewPage.closeRaiseModal()" class="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">取消</button>
+        <button id="rq2-submit-btn" onclick="ReviewPage.raiseQuery()" class="bg-blue-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-blue-700">提交质疑</button>
+      </div>
+    </div>
+  </div>
+</div>
