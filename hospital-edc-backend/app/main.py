@@ -34,6 +34,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def no_cache_for_static(request: Request, call_next):
+    """禁止浏览器缓存前端静态资源（js/css/pages），避免改了代码前端仍跑旧文件。
+    开发/演示阶段前端频繁改动，缓存旧 JS 会造成"改了没生效"的假象。"""
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith(("/js", "/css", "/pages")) or path == "/":
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
 app.include_router(auth.router)
 app.include_router(patients.router)
 app.include_router(visits.router)

@@ -94,26 +94,12 @@ async function selectPatient(id) {
     return;
   }
 
-  // 保存当前选择的患者到sessionStorage
+  // 保存当前选择的患者到sessionStorage。
+  // 录入页每次进入都会据此重新加载该患者的访视列表和草稿（见 navigation.js 的 loadEntry）
   sessionStorage.setItem('currentPatient', JSON.stringify(patient));
 
   // 跳转到数据录入页面
   showPage('entry', document.querySelectorAll('.sidebar-item')[2]);
-
-  // 更新数据录入页面的患者信息
-  setTimeout(() => {
-    const codeEl = document.getElementById('entry-patient-code');
-    const infoEl = document.getElementById('entry-patient-info');
-    if (codeEl && infoEl) {
-      codeEl.textContent = patient.patient_code;
-      infoEl.textContent = `${patient.name_initials || ''} / ${genderLabel[patient.gender] || patient.gender} / ${patient.age || '—'}岁`;
-    }
-
-    // 如果VisitEntry模块已加载，设置当前患者
-    if (typeof VisitEntry !== 'undefined') {
-      VisitEntry.currentPatient = patient;
-    }
-  }, 100);
 }
 
 // 打开创建患者模态框

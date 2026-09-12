@@ -2,6 +2,18 @@
 const RecordedPage = {
   GENDER_LABEL: { male: '男', female: '女' },
   VISIT_STATUS_TEXT: { draft: '草稿', submitted: '待审核', qc_passed: '质控通过', signed: '已签名', locked: '已锁定' },
+  _cacheById: Object.create(null),
+
+  // 选择患者进入录入页（与患者管理的 selectPatient 一致：写入 sessionStorage 后跳转）
+  selectPatient(id) {
+    const patient = this._cacheById[id];
+    if (!patient) {
+      console.error('患者不存在:', id);
+      return;
+    }
+    sessionStorage.setItem('currentPatient', JSON.stringify(patient));
+    showPage('entry', document.querySelectorAll('.sidebar-item')[2]);
+  },
 
   async init() {
     if (!getToken()) return;
@@ -18,6 +30,7 @@ const RecordedPage = {
       if (!rawItems.some(p => p.has_submitted !== undefined)) {
         items = rawItems.filter(p => ['submitted', 'qc_passed', 'signed', 'locked'].includes(p.latest_visit_status));
       }
+      this._cacheById = Object.create(null);
       title.textContent = '已录入患者（' + items.length + '）';
       footer.textContent = '共 ' + items.length + ' 条';
       if (!items.length) {
@@ -25,6 +38,7 @@ const RecordedPage = {
         return;
       }
       tbody.innerHTML = items.map(p => {
+        this._cacheById[p.id] = p;
         const enroll = p.enrollment_date ? p.enrollment_date.slice(0, 10) : '—';
         const gender = this.GENDER_LABEL[p.gender] || p.gender || '—';
         const st = this.VISIT_STATUS_TEXT[p.latest_visit_status] || '未建访视';
@@ -35,7 +49,7 @@ const RecordedPage = {
           <td class="px-4 py-3 text-sm">${p.age ?? '—'}</td>
           <td class="px-4 py-3 text-sm">${enroll}</td>
           <td class="px-4 py-3 text-sm">${st}</td>
-          <td class="px-4 py-3"><button onclick="showPage('entry', document.querySelectorAll('.sidebar-item')[2])" class="text-blue-600 text-xs hover:underline">管理/修改</button></td>
+          <td class="px-4 py-3"><button onclick="RecordedPage.selectPatient(${p.id})" class="text-blue-600 text-xs hover:underline">管理/修改</button></td>
         </tr>`;
       }).join('');
     } catch (e) {

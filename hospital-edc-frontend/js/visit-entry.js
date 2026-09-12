@@ -19,6 +19,14 @@ const VisitEntry = {
       this.currentPatient = JSON.parse(patientData);
       this.updatePatientInfo();
       this.loadPatientVisits();
+    } else {
+      // 未选择患者：清空残留状态，避免显示/自动保存上一个患者的草稿
+      this.currentPatient = null;
+      this.resetEntryState();
+      const codeEl = document.getElementById('entry-patient-code');
+      const infoEl = document.getElementById('entry-patient-info');
+      if (codeEl) codeEl.textContent = '未选择';
+      if (infoEl) infoEl.textContent = '请先在【患者管理】选择患者';
     }
   },
 
@@ -39,11 +47,57 @@ const VisitEntry = {
     }
   },
 
+  // 重置录入页状态（切换患者/未选择患者时，清除上一个患者/访视的残留数据）
+  resetEntryState() {
+    this.stopAutosave();
+    this.currentVisit = null;
+    this.updateVisitStatusBadge();
+    const select = document.getElementById('entry-visit-select');
+    if (select) select.innerHTML = '<option value="">选择访视…</option>';
+    this.clearForms();
+    const tip = document.getElementById('entry-no-visit-tip');
+    const formArea = document.getElementById('entry-form-area');
+    if (tip) tip.style.display = 'block';
+    if (formArea) formArea.style.display = 'none';
+    if (typeof QcBar !== 'undefined') QcBar.refresh();
+  },
+
+  // 清空所有表单字段（避免残留上一个访视/患者已填的数据）
+  clearForms() {
+    const area = document.getElementById('entry-form-area');
+    if (!area) return;
+    area.querySelectorAll('input[type="text"], input[type="number"], textarea').forEach(el => { el.value = ''; });
+    area.querySelectorAll('input[type="checkbox"], input[type="radio"]').forEach(el => { el.checked = false; });
+    // 滑块复位到默认值，并同步其分数/数值标签
+    area.querySelectorAll('input[type="range"]').forEach(el => {
+      el.value = el.defaultValue;
+      ['-val', '-score'].forEach(suffix => {
+        const label = document.getElementById(el.id + suffix);
+        if (label) label.textContent = el.value;
+      });
+    });
+    // 药物列表清空
+    const medList = document.getElementById('medication-list');
+    if (medList) medList.innerHTML = '';
+    // 重新计算各自动汇总项（基于空表单 → 归零/待评估）
+    this.calculateTotalCost();
+    this.calculatePHQ9();
+    this.calculateGAD7();
+    this.calculateDTSQ();
+    this.calculateDietScore();
+    this.calculateExerciseScore();
+    this.showWarnings([]);
+  },
+
   // 加载患者的访视列表（填充下拉框，自动选中草稿）
   async loadPatientVisits() {
     if (!this.currentPatient) return;
     const select = document.getElementById('entry-visit-select');
     if (!select) return;
+
+    // 先清除上一个患者/访视的残留状态（停掉自动保存，防止把新患者的数据写进旧草稿）
+    this.resetEntryState();
+
     try {
       const visits = await api('GET', `/api/patients/${this.currentPatient.id}/visits/`);
       select.innerHTML = '<option value="">选择访视…</option>' + visits.map(v => {
@@ -51,7 +105,7 @@ const VisitEntry = {
         const statusLabel = { draft: '草稿', submitted: '待审核', qc_passed: '质控通过', signed: '已签名', locked: '已锁定' }[v.status] || v.status;
         return `<option value="${v.id}">${typeLabel}（${v.visit_date}）· ${statusLabel}</option>`;
       }).join('');
-      // 自动选中最新草稿（或最新一条）
+      // 自动选中最新草稿（或最新一条）；无访视时停留在"请先创建访视"提示
       const draft = visits.find(v => v.status === 'draft') || visits[visits.length - 1];
       if (draft) {
         select.value = String(draft.id);
@@ -65,7 +119,12 @@ const VisitEntry = {
 
   // 选择访视后加载数据
   async onVisitSelect(visitId) {
-    if (!visitId) { this.currentVisit = null; return; }
+    if (!visitId) {
+      this.currentVisit = null;
+      this.stopAutosave();
+      this.updateVisitStatusBadge();
+      return;
+    }
     try {
       const visit = await api('GET', `/api/visits/${visitId}`);
       this.currentVisit = visit;

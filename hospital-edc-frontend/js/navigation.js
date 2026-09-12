@@ -44,7 +44,7 @@ async function loadPatientsPage() {
 
   if (!pageEl.hasAttribute('data-loaded')) {
     try {
-      const response = await fetch('pages/patients.html');
+      const response = await fetch('pages/patients.html?v=20260912a');
       const html = await response.text();
       pageEl.innerHTML = html;
       pageEl.setAttribute('data-loaded', 'true');
@@ -71,7 +71,7 @@ async function loadEntry() {
 
   if (!pageEl.hasAttribute('data-loaded')) {
     try {
-      const response = await fetch('pages/visit-entry.html');
+      const response = await fetch('pages/visit-entry.html?v=20260912a');
       const html = await response.text();
       pageEl.innerHTML = html;
       pageEl.setAttribute('data-loaded', 'true');
@@ -85,6 +85,10 @@ async function loadEntry() {
       pageEl.innerHTML = '<div class="text-center text-red-400 py-20">页面加载失败: ' + e.message + '</div>';
       return;
     }
+  } else if (typeof VisitEntry !== 'undefined') {
+    // 已加载过：每次进入都按 sessionStorage 的当前患者重新加载，
+    // 避免残留上一个患者/草稿（不同患者共用同一草稿的问题根源）
+    VisitEntry.loadCurrentPatient();
   }
 }
 
@@ -99,7 +103,7 @@ async function loadConsent() {
 
   if (!pageEl.hasAttribute('data-loaded')) {
     try {
-      const response = await fetch('pages/consent.html');
+      const response = await fetch('pages/consent.html?v=20260912a');
       pageEl.innerHTML = await response.text();
       pageEl.setAttribute('data-loaded', 'true');
       if (typeof ConsentPage !== 'undefined') {
@@ -122,7 +126,7 @@ async function loadRecordedPatients() {
 
   if (!pageEl.hasAttribute('data-loaded')) {
     try {
-      const response = await fetch('pages/recorded.html');
+      const response = await fetch('pages/recorded.html?v=20260912a');
       pageEl.innerHTML = await response.text();
       pageEl.setAttribute('data-loaded', 'true');
     } catch (e) {
@@ -146,7 +150,7 @@ async function loadExport() {
 
   if (!pageEl.hasAttribute('data-loaded')) {
     try {
-      const response = await fetch('pages/export.html');
+      const response = await fetch('pages/export.html?v=20260912a');
       const html = await response.text();
       pageEl.innerHTML = html;
       pageEl.setAttribute('data-loaded', 'true');

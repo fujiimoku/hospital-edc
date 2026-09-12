@@ -4,7 +4,7 @@ const QcBar = {
 
   // 主刷新：按角色/状态决定按钮，并拉取该访视的质疑列表
   async refresh() {
-    const bar = document.getElementById('qc-bar');
+    const bar = document.getElementById('entry-qc-bar');
     if (!bar) return;
     const visit = (typeof VisitEntry !== 'undefined') ? VisitEntry.currentVisit : null;
     const user = getUser();
