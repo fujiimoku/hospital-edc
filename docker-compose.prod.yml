@@ -1,0 +1,121 @@
+# 生产编排(单实例):MySQL + 后端(含前端静态托管) + Nginx
+# 与 docker-compose.multi.yml 的区别:去演示双实例;密码/库走 .env.production;
+# 全部 restart 策略 + 资源约束(适配 2核4G ECS)+ 每日自动 mysqldump 备份。
+#
+# 用法(在仓库根目录):
+#   cp hospital-edc-backend/.env.production.example hospital-edc-backend/.env.production
+#   vim hospital-edc-backend/.env.production   # 填强密码/密钥
+#   docker compose --env-file hospital-edc-backend/.env.production \
+#     -f docker-compose.prod.yml up -d --build
+#
+# 访问:http://<服务器IP>/  (Nginx 80 → backend:8000)
+
+services:
+  # ── 数据库(数据持久化在 docker 卷 edc-prod-mysql-data)──
+  mysql:
+    image: mysql:8.4
+    container_name: edc-prod-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在 .env.production 配置 MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-edc_prod}
+      TZ: Asia/Shanghai
+    # 4G 内存机器上与后端共存:调小缓冲池、关性能采样
+    command: >
+      --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      --innodb-buffer-pool-size=512M
+      --max-connections=100
+      --performance-schema=OFF
+    volumes:
+      - edc-prod-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1500M
+    # 只绑本机(运维可 SSH 隧道连库调试),不暴露公网
+    ports:
+      - "127.0.0.1:3306:3306"
+
+  # ── 后端(镜像内含前端静态托管,见 backend Dockerfile)──
+  backend:
+    build:
+      context: .
+      dockerfile: hospital-edc-backend/Dockerfile
+    image: edc-backend:prod
+    container_name: edc-prod-backend
+    restart: unless-stopped
+    env_file: hospital-edc-backend/.env.production
+    environment:
+      # 指向 compose 内的 mysql 服务;密码与 .env.production 中 MYSQL_ROOT_PASSWORD 保持一致
+      DATABASE_URL: mysql+pymysql://root:${MYSQL_ROOT_PASSWORD}@mysql:3306/${MYSQL_DATABASE:-edc_prod}?charset=utf8mb4
+    depends_on:
+      mysql:
+        condition: service_healthy
+    expose:
+      - "8000"
+    # 生产级 uvicorn:2 worker(2核机器);不要加 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+    volumes:
+      - edc-prod-uploads:/app/uploads
+    deploy:
+      resources:
+        limits:
+          memory: 1200M
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/api/docs')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── Nginx 单入口(80 反代;证书就绪后启用 deploy/nginx.prod.conf 的 443 段)──
+  nginx:
+    image: nginx:alpine
+    container_name: edc-prod-nginx
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+      # 备案+证书就绪后放开,并挂载证书目录:
+      # - "443:443"
+    volumes:
+      - ./deploy/nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+      # HTTPS 时挂载证书: ./deploy/certs:/etc/nginx/certs:ro
+    deploy:
+      resources:
+        limits:
+          memory: 200M
+
+  # ── 每日数据库备份(备份文件落在宿主机 ./backups,建议再同步到 OSS)──
+  db-backup:
+    image: mysql:8.4
+    container_name: edc-prod-backup
+    restart: unless-stopped
+    environment:
+      MYSQL_PWD: ${MYSQL_ROOT_PASSWORD}
+      TZ: Asia/Shanghai
+    depends_on:
+      mysql:
+        condition: service_healthy
+    entrypoint: >
+      sh -c 'while true; do
+        ts=$$(date +%Y%m%d_%H%M%S);
+        mysqldump -h mysql -u root --single-transaction --routines --triggers
+          ${MYSQL_DATABASE:-edc_prod} | gzip > /backups/edc_$${ts}.sql.gz;
+        echo "[backup] done edc_$${ts}.sql.gz";
+        find /backups -name "edc_*.sql.gz" -mtime +14 -delete;
+        sleep 86400;
+      done'
+    volumes:
+      - ./backups:/backups
+
+volumes:
+  edc-prod-mysql-data:
+  edc-prod-uploads:

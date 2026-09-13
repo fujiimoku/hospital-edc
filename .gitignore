@@ -3,8 +3,12 @@ __pycache__/
 *.pyc
 venv/
 
-# 环境配置（含密钥，不入库；模板见 .env.example / .env.project-*）
+# 环境配置（含密钥，不入库；模板见 .env.example / .env.production.example / .env.project-*）
 hospital-edc-backend/.env
+hospital-edc-backend/.env.production
+
+# 生产备份产物（docker-compose.prod.yml 的 db-backup 落盘目录）
+backups/
 
 # 运行产物
 hospital-edc-backend/uploads/
