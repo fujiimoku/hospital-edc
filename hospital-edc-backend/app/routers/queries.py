@@ -17,7 +17,8 @@ router = APIRouter(prefix="/api/queries", tags=["数据质疑 Query"])
 
 
 def _get_accessible_visit(db: Session, visit_id: int, current_user) -> Visit:
-    visit = db.query(Visit).filter(Visit.id == visit_id).first()
+    # Serialize query changes with visit review/signing in the same transaction.
+    visit = db.query(Visit).filter(Visit.id == visit_id).populate_existing().with_for_update().first()
     if not visit:
         raise HTTPException(404, "访视记录不存在")
     patient = db.query(Patient).filter(Patient.id == visit.patient_id).first()
@@ -54,8 +55,8 @@ def create_query(
 ):
     """质控员创建 query（submitted 状态的访视）。"""
     visit = _get_accessible_visit(db, data.visit_id, current_user)
-    if visit.status == "draft":
-        raise HTTPException(400, "草稿状态的访视无需质控质疑，请先提交")
+    if visit.status != "submitted":
+        raise HTTPException(400, "仅待审核访视可提出质疑；已审核数据请先按更正流程退回")
     q = Query(
         visit_id=data.visit_id,
         field_name=data.field_name,

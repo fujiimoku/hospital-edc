@@ -19,21 +19,41 @@ from app.services.scoring import (
 from app.services.validation import check_physical_exam, check_lab_results
 from app.services.audit import log_change, diff_model
 
-router = APIRouter(prefix="/api/visits", tags=["表单录入"])
+def _get_visit_with_access(visit_id: int, db: Session, current_user, for_update=False) -> Visit:
+    query = db.query(Visit).filter(Visit.id == visit_id)
+    if for_update:
+        query = query.populate_existing().with_for_update()
+    visit = query.first()
+    if not visit:
+        raise HTTPException(404, "访视记录不存在")
+    accessible = get_accessible_center_ids(current_user)
+    if accessible is not None and visit.patient.center_id not in accessible:
+        raise HTTPException(403, "无权访问该访视")
+    return visit
+
+
+def _require_visit_access(
+    visit_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """所有表单端点（包括读取）都必须验证访视所属中心。"""
+    return _get_visit_with_access(visit_id, db, current_user)
+
+
+router = APIRouter(
+    prefix="/api/visits", tags=["表单录入"],
+    dependencies=[Depends(_require_visit_access)],
+)
 
 
 #  辅助函数
 def _get_unlocked_visit(visit_id: int, db: Session, current_user=None) -> Visit:
-    visit = db.query(Visit).filter(Visit.id == visit_id).first()
-    if not visit:
-        raise HTTPException(404, "访视记录不存在")
-    if visit.status == "locked":
-        raise HTTPException(400, "该访视已锁定，无法修改数据")
-    # 中心隔离：非总中心用户只能操作本中心的访视
-    if current_user is not None:
-        accessible = get_accessible_center_ids(current_user)
-        if accessible is not None and visit.patient.center_id not in accessible:
-            raise HTTPException(403, "无权访问该访视")
+    if current_user.role not in ("researcher", "center_admin", "main_admin"):
+        raise HTTPException(403, "需要研究者权限")
+    visit = _get_visit_with_access(visit_id, db, current_user, for_update=True)
+    if visit.status != "draft":
+        raise HTTPException(400, "仅草稿访视可修改，请由总管理员填写原因并退回草稿后更正")
     return visit
 
 

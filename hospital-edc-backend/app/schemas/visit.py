@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import date, datetime
 
@@ -24,3 +24,15 @@ class VisitOut(BaseModel):
     created_at: Optional[datetime]
 
     model_config = {"from_attributes": True}
+
+
+class VisitReopen(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def nonblank_reason(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("必须填写更正原因")
+        return value

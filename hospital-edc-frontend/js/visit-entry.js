@@ -99,7 +99,7 @@ const VisitEntry = {
     this.resetEntryState();
 
     try {
-      const visits = await api('GET', `/api/patients/${this.currentPatient.id}/visits/`);
+      const visits = await api('GET', `/api/patients/${this.currentPatient.id}/visits`);
       select.innerHTML = '<option value="">选择访视…</option>' + visits.map(v => {
         const typeLabel = { baseline: '基线', M6: '6月', M12: '12月', M18: '18月', M24: '24月' }[v.visit_type] || v.visit_type;
         const statusLabel = { draft: '草稿', submitted: '待审核', qc_passed: '质控通过', signed: '已签名', locked: '已锁定' }[v.status] || v.status;
@@ -141,12 +141,27 @@ const VisitEntry = {
         this.stopAutosave();
       }
       await this.loadVisitForms(visitId);
+      this.updateEditability();
       document.getElementById('entry-no-visit-tip').style.display = 'none';
       document.getElementById('entry-form-area').style.display = 'block';
     } catch (e) {
       console.error('加载访视失败:', e);
       showToast('加载访视失败：' + e.message, 'error');
     }
+  },
+
+  updateEditability() {
+    const role = getUser()?.role;
+    const editable = this.currentVisit?.status === 'draft' && ['researcher', 'center_admin', 'main_admin'].includes(role);
+    document.querySelectorAll('#entry-form-area input, #entry-form-area select, #entry-form-area textarea, #entry-form-area button:not(.tab-btn)').forEach(el => {
+      if (!editable && !el.disabled) {
+        el.dataset.edcReadOnly = '1';
+        el.disabled = true;
+      } else if (editable && el.dataset.edcReadOnly === '1') {
+        el.disabled = false;
+        delete el.dataset.edcReadOnly;
+      }
+    });
   },
 
   updateVisitStatusBadge() {
@@ -1109,8 +1124,8 @@ async function saveVisitData(status) {
       showToast('请先创建或选择访视', 'error');
       return;
     }
-    if (VisitEntry.currentVisit.status === 'locked') {
-      showToast('该访视已锁定，无法修改', 'error');
+    if (VisitEntry.currentVisit.status !== 'draft') {
+      showToast('该访视只读；更正需由总管理员填写原因并退回草稿', 'error');
       return;
     }
 
@@ -1128,6 +1143,7 @@ async function saveVisitData(status) {
     if (status === 'submitted') {
       await api('POST', `/api/visits/${VisitEntry.currentVisit.id}/submit`);
       VisitEntry.currentVisit.status = 'submitted';
+      VisitEntry.updateEditability();
       VisitEntry.updateVisitStatusBadge();
       if (typeof QcBar !== 'undefined') QcBar.refresh();
       VisitEntry.stopAutosave();

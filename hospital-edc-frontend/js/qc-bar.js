@@ -19,13 +19,14 @@ const QcBar = {
     show('qc-btn-sign',   role === 'researcher' && st === 'qc_passed');
     show('qc-btn-lock',   (role === 'center_admin' || role === 'main_admin') && st === 'signed');
     show('qc-btn-unlock', role === 'main_admin' && st === 'locked');
+    show('qc-btn-reopen', role === 'main_admin' && ['submitted', 'qc_passed', 'signed'].includes(st));
 
     const hints = {
       draft:     '草稿中 —— 研究者可继续录入，完成后点击页面底部「提交审核」',
       submitted: role === 'qc' ? '待质控审核 —— 可对可疑字段提起质疑；全部质疑关闭后方可通过'
                                : '待质控审核 —— 等待质控员审核（如有质疑请在下方回复）',
       qc_passed: role === 'researcher' ? '质控已通过 —— 请核对数据并签名确认' : '质控已通过 —— 等待研究者签名',
-      signed:    '已签名 —— 等待管理员锁定（锁定后不可再修改）',
+      signed:    '已签名 —— 数据只读，等待管理员锁定；更正须退回草稿并重新审核签名',
       locked:    '已锁定 —— 数据封存，仅总管理员可解锁',
     };
     const hint = document.getElementById('qc-bar-hint');
@@ -72,11 +73,11 @@ const QcBar = {
   },
 
   // ── 按钮动作 ─────────────────────────────
-  async _visitAction(path, okMsg) {
+  async _visitAction(path, okMsg, body) {
     const visit = VisitEntry.currentVisit;
     if (!visit) return;
     try {
-      await api('POST', `/api/visits/${visit.id}/${path}`);
+      await api('POST', `/api/visits/${visit.id}/${path}`, body);
       showToast(okMsg, 'success');
       await VisitEntry.onVisitSelect(visit.id);   // 重新拉状态（会触发 refresh）
     } catch (e) { showToast(e.message || '操作失败', 'error'); }
@@ -85,8 +86,19 @@ const QcBar = {
   sign()   { this._visitAction('sign', '已签名确认'); },
   lock()   { this._visitAction('lock', '访视已锁定'); },
   unlock() {
-    if (!confirm('解锁后数据回到"已签名"状态可被修改，操作将记入审计日志。确定解锁？')) return;
-    this._visitAction('unlock', '已解锁');
+    this._reopenWithReason('unlock');
+  },
+  reopen() {
+    this._reopenWithReason('reopen');
+  },
+  _reopenWithReason(path) {
+    const reason = prompt('请输入更正原因（不含患者个人信息）。操作会退回草稿，原审核和签名不再有效，更正后须重新提交、审核和签名。');
+    if (reason === null) return;
+    if (!reason.trim() || reason.trim().length > 500) {
+      showToast('请填写 1–500 字的更正原因', 'error');
+      return;
+    }
+    this._visitAction(path, '已退回草稿，请更正后重新提交审核', { reason: reason.trim() });
   },
 
   // ── 质疑：提起 / 答复 / 关闭 ─────────────

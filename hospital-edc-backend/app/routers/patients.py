@@ -8,7 +8,7 @@ from app.models.patient import Patient
 from app.models.visit import Visit
 from app.models.consent import ConsentRecord
 from app.schemas.patient import PatientCreate, PatientUpdate, PatientOut
-from app.dependencies import get_current_user, get_accessible_center_ids
+from app.dependencies import get_current_user, get_accessible_center_ids, require_researcher
 from app.services.patient_code import generate_patient_code
 from app.services.audit import log_change, diff_model
 from app.utils.crypto import encrypt, decrypt, mask
@@ -101,7 +101,7 @@ def list_patients(
 def create_patient(
     data: PatientCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_researcher),
 ):
     # 确定患者所属中心：body.center_id → 当前用户中心
     center_id = data.center_id or current_user.center_id
@@ -210,7 +210,7 @@ def update_patient(
     patient_id: int,
     data: PatientUpdate,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_researcher),
 ):
     patient = db.query(Patient).filter(Patient.id == patient_id).first()
     if not patient:
@@ -263,7 +263,7 @@ def update_patient(
 def delete_patient(
     patient_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_researcher),
 ):
     patient = db.query(Patient).filter(Patient.id == patient_id).first()
     if not patient:
@@ -309,7 +309,7 @@ def create_patient_visit(
     patient_id: int,
     data: VisitCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_researcher),
 ):
     """为指定患者创建新访视"""
     patient = db.query(Patient).filter(Patient.id == patient_id).first()

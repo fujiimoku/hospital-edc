@@ -2,7 +2,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.dependencies import get_current_user, require_admin
+from app.dependencies import require_main_admin
 from app.models.audit_log import AuditLog
 from app.models.user import User
 
@@ -17,9 +17,9 @@ def list_audit_logs(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_main_admin),
 ):
-    """审计日志查询（GCP 可溯源性需求 11.2）。仅管理员可见。"""
+    """审计日志查询。事件的中心字段可能是操作者中心，暂仅总管理员可见。"""
     q = db.query(AuditLog)
     if table_name:
         q = q.filter(AuditLog.table_name == table_name)

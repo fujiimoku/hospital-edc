@@ -50,6 +50,10 @@ def create_invitation_code(
     if current_user.role == "center_admin":
         if data.center_id != current_user.center_id:
             raise HTTPException(403, "只能为自己的中心创建邀请码")
+        if data.role not in ("researcher", "qc"):
+            raise HTTPException(403, "分中心管理员只能邀请研究者或质控员")
+    elif data.role not in ("researcher", "qc", "center_admin"):
+        raise HTTPException(403, "不能通过邀请码创建总管理员")
 
     # 验证中心是否存在
     center = db.query(Center).filter(Center.id == data.center_id).first()

@@ -5,7 +5,8 @@ from app.models.audit_log import AuditLog
 
 
 def log_change(db: Session, user, table_name: str, record_id: int,
-               changes: dict, action: str = "update") -> None:
+               changes: dict, action: str = "update", *, center_id=None,
+               sensitive_fields=()) -> None:
     """记录字段级前后值。changes = {field: (old, new)}。
 
     调用方负责 commit（与业务写操作同事务）。
@@ -13,6 +14,9 @@ def log_change(db: Session, user, table_name: str, record_id: int,
     if user is None:
         return
     for field, (old, new) in changes.items():
+        if field in sensitive_fields:
+            old = None if old is None else "***"
+            new = None if new is None else "***"
         db.add(AuditLog(
             table_name=table_name,
             record_id=record_id,
@@ -21,7 +25,7 @@ def log_change(db: Session, user, table_name: str, record_id: int,
             new_value=None if new is None else str(new),
             action=action,
             user_id=user.id,
-            center_id=getattr(user, "center_id", None),
+            center_id=center_id if center_id is not None else getattr(user, "center_id", None),
         ))
 
 

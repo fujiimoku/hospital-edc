@@ -5,7 +5,7 @@ from app.database import get_db
 from app.models.visit import Visit
 from app.models.patient import Patient
 from app.models.query import Query
-from app.schemas.visit import VisitCreate, VisitUpdate, VisitOut
+from app.schemas.visit import VisitCreate, VisitUpdate, VisitOut, VisitReopen
 from app.dependencies import (
     get_current_user, get_accessible_center_ids,
     require_admin, require_main_admin, require_qc, require_researcher,
@@ -15,9 +15,12 @@ from app.services.audit import log_action, log_change, diff_model
 router = APIRouter(prefix="/api/visits", tags=["访视管理"])
 
 
-def _get_visit_with_access(visit_id: int, db: Session, current_user) -> Visit:
+def _get_visit_with_access(visit_id: int, db: Session, current_user, for_update=False) -> Visit:
     """取访视并校验中心隔离。"""
-    visit = db.query(Visit).filter(Visit.id == visit_id).first()
+    query = db.query(Visit).filter(Visit.id == visit_id)
+    if for_update:
+        query = query.populate_existing().with_for_update()
+    visit = query.first()
     if not visit:
         raise HTTPException(404, "访视记录不存在")
     accessible = get_accessible_center_ids(current_user)
@@ -53,7 +56,7 @@ def list_visits(
 def create_visit(
     data: VisitCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_researcher),
 ):
     """创建新访视"""
     patient = db.query(Patient).filter(Patient.id == data.patient_id).first()
@@ -106,11 +109,11 @@ def update_visit(
     visit_id: int,
     data: VisitUpdate,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_researcher),
 ):
-    visit = _get_visit_with_access(visit_id, db, current_user)
-    if visit.status == "locked":
-        raise HTTPException(400, "该访视已锁定，无法修改")
+    visit = _get_visit_with_access(visit_id, db, current_user, for_update=True)
+    if visit.status != "draft":
+        raise HTTPException(400, "仅草稿访视可修改，请先由总管理员退回草稿")
     changes = data.model_dump(exclude_unset=True)
     # 状态不允许通过 PUT 直接改（需走状态流转端点）
     changes.pop("status", None)
@@ -131,6 +134,11 @@ def _transition(visit: Visit, expected: str, to: str):
         raise HTTPException(400, f"当前状态 {visit.status} 不可执行该操作（需 {expected}）")
 
 
+def _require_closed_queries(db, visit_id):
+    if db.query(Query).filter(Query.visit_id == visit_id, Query.status != "closed").count():
+        raise HTTPException(400, "该访视还有未关闭的质疑，无法继续审核、签名或锁定")
+
+
 @router.post("/{visit_id}/submit")
 def submit_visit(
     visit_id: int,
@@ -138,7 +146,7 @@ def submit_visit(
     current_user=Depends(require_researcher),
 ):
     """研究者提交：draft → submitted"""
-    visit = _get_visit_with_access(visit_id, db, current_user)
+    visit = _get_visit_with_access(visit_id, db, current_user, for_update=True)
     _transition(visit, "draft", "submitted")
     visit.status = "submitted"
     log_action(db, current_user, "visits", visit.id, "submit", "draft→submitted")
@@ -152,12 +160,12 @@ def qc_review_visit(
     db: Session = Depends(get_db),
     current_user=Depends(require_qc),
 ):
-    """质控审核：submitted → qc_passed（要求无 open query）"""
-    visit = _get_visit_with_access(visit_id, db, current_user)
+    """质控审核：submitted → qc_passed（要求全部 query 已关闭）"""
+    visit = _get_visit_with_access(visit_id, db, current_user, for_update=True)
     _transition(visit, "submitted", "qc_passed")
     open_count = (
         db.query(Query)
-        .filter(Query.visit_id == visit_id, Query.status == "open")
+        .filter(Query.visit_id == visit_id, Query.status != "closed")
         .count()
     )
     if open_count > 0:
@@ -175,8 +183,9 @@ def sign_visit(
     current_user=Depends(require_researcher),
 ):
     """研究者签名确认：qc_passed → signed"""
-    visit = _get_visit_with_access(visit_id, db, current_user)
+    visit = _get_visit_with_access(visit_id, db, current_user, for_update=True)
     _transition(visit, "qc_passed", "signed")
+    _require_closed_queries(db, visit_id)
     visit.status = "signed"
     log_action(db, current_user, "visits", visit.id, "sign", "qc_passed→signed")
     db.commit()
@@ -190,8 +199,9 @@ def lock_visit(
     current_user=Depends(require_admin),
 ):
     """管理员锁定：signed → locked"""
-    visit = _get_visit_with_access(visit_id, db, current_user)
+    visit = _get_visit_with_access(visit_id, db, current_user, for_update=True)
     _transition(visit, "signed", "locked")
+    _require_closed_queries(db, visit_id)
     visit.status = "locked"
     log_action(db, current_user, "visits", visit.id, "lock", "signed→locked")
     db.commit()
@@ -201,27 +211,44 @@ def lock_visit(
 @router.post("/{visit_id}/unlock")
 def unlock_visit(
     visit_id: int,
+    data: VisitReopen,
     db: Session = Depends(get_db),
     current_user=Depends(require_main_admin),
 ):
-    """总中心管理员解锁：locked → signed（记审计）"""
-    visit = _get_visit_with_access(visit_id, db, current_user)
-    _transition(visit, "locked", "signed")
-    visit.status = "signed"
-    log_action(db, current_user, "visits", visit.id, "unlock", "locked→signed")
+    """总中心管理员解锁更正：locked → draft，旧审核/签名不再有效。"""
+    visit = _get_visit_with_access(visit_id, db, current_user, for_update=True)
+    _transition(visit, "locked", "draft")
+    return _reopen(db, current_user, visit, data.reason, "unlock")
+
+
+def _reopen(db, current_user, visit, reason, action):
+    previous = visit.status
+    visit.status = "draft"
+    log_change(db, current_user, "visits", visit.id,
+               {"status": (previous, "draft"), "reopen_reason": (None, reason)}, action,
+               center_id=visit.patient.center_id)
     db.commit()
-    return {"message": "解锁成功", "visit_id": visit_id, "status": "signed"}
+    return {"message": "已退回草稿，更正后须重新提交、审核和签名", "visit_id": visit.id, "status": "draft"}
+
+
+@router.post("/{visit_id}/reopen")
+def reopen_visit(visit_id: int, data: VisitReopen, db: Session = Depends(get_db),
+                 current_user=Depends(require_main_admin)):
+    visit = _get_visit_with_access(visit_id, db, current_user, for_update=True)
+    if visit.status not in ("submitted", "qc_passed", "signed"):
+        raise HTTPException(400, "只能退回已提交、质控通过或已签名的访视；锁定访视请先解锁")
+    return _reopen(db, current_user, visit, data.reason, "reopen")
 
 
 @router.delete("/{visit_id}")
 def delete_visit(
     visit_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_researcher),
 ):
-    visit = _get_visit_with_access(visit_id, db, current_user)
-    if visit.status in ("signed", "locked"):
-        raise HTTPException(400, "已签名或锁定的访视不可删除")
+    visit = _get_visit_with_access(visit_id, db, current_user, for_update=True)
+    if visit.status != "draft":
+        raise HTTPException(400, "仅草稿访视可删除")
     db.delete(visit)
     db.commit()
     return {"message": "删除成功"}

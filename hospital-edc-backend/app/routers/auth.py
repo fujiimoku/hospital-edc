@@ -4,11 +4,11 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 from app.database import get_db
 from app.models.user import User
-from app.models.center import InvitationCode
+from app.models.center import Center, InvitationCode
 from app.schemas.user import UserCreate, UserOut
 from app.dependencies import (
     verify_password, hash_password,
-    create_access_token, get_current_user, require_admin,
+    create_access_token, get_current_user, require_main_admin,
 )
 from app.services.audit import log_action
 
@@ -51,18 +51,23 @@ def get_me(current_user: User = Depends(get_current_user)):
 def register(
     data: UserCreate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),   # 只有管理员可以创建账号
+    _: User = Depends(require_main_admin),
 ):
     if db.query(User).filter(User.username == data.username).first():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="用户名已存在",
         )
+    if data.role != "main_admin":
+        center = db.query(Center).filter(Center.id == data.center_id, Center.is_active == True).first()
+        if not center:
+            raise HTTPException(status_code=400, detail="请指定有效的所属中心")
     user = User(
         username=data.username,
         hashed_password=hash_password(data.password),
         full_name=data.full_name,
-        role=data.role or "researcher",
+        role=data.role,
+        center_id=data.center_id,
     )
     db.add(user)
     db.commit()
@@ -101,6 +106,9 @@ def register_with_invitation_code(
 
     if not code_record:
         raise HTTPException(status_code=400, detail="邀请码无效")
+
+    if code_record.role not in ("researcher", "qc", "center_admin"):
+        raise HTTPException(status_code=403, detail="邀请码角色无效")
 
     # 检查邀请码是否过期
     if code_record.expires_at and code_record.expires_at < datetime.utcnow():

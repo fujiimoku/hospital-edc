@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Literal, Optional
 from datetime import datetime
 
 
@@ -7,7 +7,8 @@ class UserCreate(BaseModel):
     username: str
     password: str
     full_name: Optional[str] = None
-    role: Optional[str] = "researcher"
+    role: Literal["researcher", "qc", "center_admin", "main_admin"] = "researcher"
+    center_id: Optional[int] = None
 
 
 class UserOut(BaseModel):

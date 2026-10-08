@@ -6,6 +6,7 @@
 """
 import os
 import sys
+from unittest.mock import patch
 
 # 必须在导入 app 之前设置环境变量（Settings 在导入时读取）
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -98,7 +99,7 @@ def client(db):
             session.close()
 
     app.dependency_overrides[get_db] = _override_get_db
-    with TestClient(app) as c:
+    with patch("app.main.engine", _test_engine), TestClient(app) as c:
         yield c
     app.dependency_overrides.pop(get_db, None)
 

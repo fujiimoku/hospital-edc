@@ -4,10 +4,24 @@ from typing import List, Optional
 from app.database import get_db
 from app.models.adverse_event import AdverseEvent
 from app.models.patient import Patient
+from app.models.visit import Visit
+from app.services.audit import log_change, diff_model
 from app.schemas.adverse_event import AdverseEventCreate, AdverseEventUpdate, AdverseEventOut
-from app.dependencies import get_current_user, get_accessible_center_ids
+from app.dependencies import get_current_user, get_accessible_center_ids, require_researcher
 
 router = APIRouter(prefix="/api/adverse-events", tags=["不良事件"])
+
+
+def _validate_visit(db: Session, patient_id: int, visit_id: Optional[int]):
+    if visit_id is not None:
+        visit = db.query(Visit).filter(Visit.id == visit_id, Visit.patient_id == patient_id).first()
+        if not visit:
+            raise HTTPException(400, "关联访视必须属于该患者")
+
+
+def _audit(db, current_user, patient, ae, changes, action):
+    log_change(db, current_user, "adverse_events", ae.id, changes, action,
+               center_id=patient.center_id, sensitive_fields={"description", "action_taken"})
 
 
 def _get_accessible_patient(db: Session, patient_id: int, current_user) -> Patient:
@@ -55,11 +69,15 @@ def get_adverse_event(
 def create_adverse_event(
     data: AdverseEventCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_researcher),
 ):
-    _get_accessible_patient(db, data.patient_id, current_user)
+    patient = _get_accessible_patient(db, data.patient_id, current_user)
+    _validate_visit(db, data.patient_id, data.visit_id)
     ae = AdverseEvent(**data.model_dump(), created_by=current_user.id)
     db.add(ae)
+    db.flush()
+    _audit(db, current_user, patient, ae,
+           {k: (None, v) for k, v in data.model_dump().items()}, "create")
     db.commit()
     db.refresh(ae)
     return ae
@@ -70,13 +88,16 @@ def update_adverse_event(
     ae_id: int,
     data: AdverseEventUpdate,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_researcher),
 ):
     ae = db.query(AdverseEvent).filter(AdverseEvent.id == ae_id).first()
     if not ae:
         raise HTTPException(404, "不良事件不存在")
-    _get_accessible_patient(db, ae.patient_id, current_user)
-    for key, value in data.model_dump(exclude_unset=True).items():
+    patient = _get_accessible_patient(db, ae.patient_id, current_user)
+    changes = data.model_dump(exclude_unset=True)
+    _validate_visit(db, ae.patient_id, changes.get("visit_id", ae.visit_id))
+    _audit(db, current_user, patient, ae, diff_model(ae, changes), "update")
+    for key, value in changes.items():
         setattr(ae, key, value)
     db.commit()
     db.refresh(ae)
@@ -87,12 +108,14 @@ def update_adverse_event(
 def delete_adverse_event(
     ae_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_researcher),
 ):
     ae = db.query(AdverseEvent).filter(AdverseEvent.id == ae_id).first()
     if not ae:
         raise HTTPException(404, "不良事件不存在")
-    _get_accessible_patient(db, ae.patient_id, current_user)
+    patient = _get_accessible_patient(db, ae.patient_id, current_user)
+    _audit(db, current_user, patient, ae,
+           {c.name: (getattr(ae, c.name), None) for c in ae.__table__.columns}, "delete")
     db.delete(ae)
     db.commit()
     return {"message": "不良事件已删除"}

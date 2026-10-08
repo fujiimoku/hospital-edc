@@ -21,7 +21,7 @@ def _create_visit(client, token, patient_id):
 
 
 def test_full_state_flow(client, admin_token, qc1_token):
-    """draft → submitted → qc_passed → signed → locked →（unlock）→ signed"""
+    """draft → submitted → qc_passed → signed → locked →（unlock）→ draft，再审批"""
     p = _create_patient(client, admin_token, "F1")
     v = _create_visit(client, admin_token, p["id"])
     vid = v["id"]
@@ -68,15 +68,18 @@ def test_full_state_flow(client, admin_token, qc1_token):
                     json={"height_cm": 171})
     assert r.status_code == 400
 
-    # 解锁回到 signed，可再次修改
-    r = client.post(f"/api/visits/{vid}/unlock", headers=auth_header(admin_token))
-    assert r.status_code == 200 and r.json()["status"] == "signed"
+    # 解锁必须填写原因并回到草稿，旧签名不再覆盖修改后的数据
+    r = client.post(f"/api/visits/{vid}/unlock", headers=auth_header(admin_token),
+                    json={"reason": "复核后更正身高"})
+    assert r.status_code == 200 and r.json()["status"] == "draft"
     r = client.post(f"/api/visits/{vid}/physical-exam", headers=auth_header(admin_token),
                     json={"height_cm": 171})
     assert r.status_code == 200
 
-    # 收尾：重新锁定，避免影响其他测试
-    client.post(f"/api/visits/{vid}/lock", headers=auth_header(admin_token))
+    assert client.post(f"/api/visits/{vid}/lock", headers=auth_header(admin_token)).status_code == 400
+    for action in ("submit", "qc-review", "sign", "lock"):
+        r = client.post(f"/api/visits/{vid}/{action}", headers=auth_header(admin_token))
+        assert r.status_code == 200, r.text
 
 
 def test_questionnaire_scores(client, admin_token):
