@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ======= 仪表板 =======
-const VISIT_TYPE_LABEL = { baseline: '基线', M6: '6月', M12: '12月', M18: '18月', M24: '24月' };
+const VISIT_TYPE_LABEL = { baseline: 'V1 基线', W12: 'V2 第12周', W26: 'V3 第26周', interim: '中间采集', M6: '6月', M12: '12月', M18: '18月', M24: '24月' };
 const VISIT_STATUS_LABEL = { draft: '草稿', submitted: '待审核', qc_passed: '质控通过', signed: '已签名', locked: '已锁定' };
 
 async function loadDashboard() {
@@ -48,7 +48,9 @@ async function loadDashboard() {
       </div>`;
     return;
   }
+  if (!getToken()) return;
   renderDashboardPage(summary, enrollment, completion, recent);
+  WeeklyEntry.start();
 }
 
 function renderDashboardPage(summary, enrollment, completion, recent) {
@@ -127,6 +129,7 @@ function renderDashboardPage(summary, enrollment, completion, recent) {
         </div>
       </div>
 
+      <div id="weekly-entry-panel" class="bg-white border rounded-xl p-5 mb-6">每周录入统计加载中…</div>
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
         <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5 lg:col-span-2">
           <h3 class="text-sm font-semibold text-gray-700 mb-4">最近患者</h3>
@@ -170,3 +173,36 @@ function renderDashboardPage(summary, enrollment, completion, recent) {
     </div>
   `;
 }
+
+
+// Only aggregate counters refresh; patient/entry forms are never replaced by polling.
+const WeeklyEntry = {
+  timer: null, week: '', generation: 0,
+  start() {
+    this.stop();
+    this.refresh();
+    this.timer = setInterval(() => this.refresh(), 30000);
+  },
+  stop() { clearInterval(this.timer); this.timer = null; this.generation++; },
+  async refresh() {
+    const panel = document.getElementById('weekly-entry-panel');
+    if (!panel || !getToken() || document.hidden || !document.getElementById('page-dashboard')?.classList.contains('active')) return;
+    const generation = ++this.generation;
+    try {
+      const data = await api('GET', '/api/reports/weekly-entry' + (this.week ? '?week=' + encodeURIComponent(this.week) : ''));
+      if (generation !== this.generation || !getToken()) return;
+      const keys = Object.keys(data.groups);
+      panel.innerHTML = `<div class="flex flex-wrap justify-between gap-3 mb-3"><h3 class="font-semibold">各分中心每周新建患者</h3>
+        <label class="text-sm">选择周内任一天 <input type="date" value="${data.week_start}" onchange="WeeklyEntry.week=this.value; WeeklyEntry.refresh()" class="border rounded px-2 py-1"/></label>
+        <button onclick="WeeklyEntry.week=''; WeeklyEntry.refresh()" class="text-blue-600 text-sm">本周</button>
+        <button onclick="WeeklyEntry.refresh()" class="text-blue-600 text-sm">刷新</button></div>
+        <p class="text-xs text-gray-500 mb-3">${data.week_start} 至 ${data.week_end} · 北京时间周一至周日 · 按患者建档时间计人数，不重复计算随访；组别按当前登记结果。每30秒刷新。</p>
+        <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th class="text-left p-2">分中心</th>${keys.map(k=>`<th class="p-2">${escapeText(data.groups[k])}</th>`).join('')}<th class="p-2">未分组</th><th class="p-2">合计</th></tr></thead><tbody>
+        ${data.items.map(c=>`<tr class="border-t"><td class="p-2">${escapeText(c.center_code)} ${escapeText(c.center_name)}</td>${keys.map(k=>`<td class="text-center p-2">${c.groups[k]}</td>`).join('')}<td class="text-center p-2">${c.unassigned}</td><td class="text-center p-2 font-semibold">${c.total}</td></tr>`).join('')}
+        </tbody></table></div><div class="text-xs text-gray-500 mt-3">本周合计 ${data.total} 人 · 更新于 ${escapeText(new Date(data.generated_at).toLocaleString('zh-CN', {timeZone:'Asia/Shanghai'}))}（北京时间）</div>`;
+    } catch (e) {
+      if (generation !== this.generation) return;
+      panel.innerHTML = '<p class="text-orange-600">每周统计更新失败，当前数据不可用。</p><button class="text-blue-600" onclick="WeeklyEntry.refresh()">重试</button>';
+    }
+  },
+};

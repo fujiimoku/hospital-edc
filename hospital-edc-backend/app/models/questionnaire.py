@@ -19,8 +19,9 @@ class Questionnaire(Base):
     q5 = Column(Integer)
     q6 = Column(Integer)
     q7 = Column(Integer)
-    q8 = Column(Integer)   # PHQ-9 专用
-    q9 = Column(Integer)   # PHQ-9 专用
+    q8 = Column(Integer)   # PHQ-9 或 DTSQ 原表第9题
+    q9 = Column(Integer)   # PHQ-9 或 DTSQ 原表第10题
+    crf_version = Column(Integer, nullable=True)  # 1=2026-10 CRF；NULL=旧版待核对
     total_score = Column(Float)   # 后端自动计算
 
     # EQ-5D-5L 专用（5个维度，每个1-5）
@@ -31,7 +32,7 @@ class Questionnaire(Base):
     eq_anxiety = Column(Integer)         # 焦虑/沮丧
     eq_vas_score = Column(Integer)       # 刻度尺 0-100
 
-    # DTSQ 专用（10题，每题1-5）
+    # DTSQ：9道选择题1-5，第8题为开放文本；不推导标准总分
     dtsq_open_text = Column(Text)        # 开放性问题答案
 
     # PHQ-9 就诊主要症状（位掩码存储）

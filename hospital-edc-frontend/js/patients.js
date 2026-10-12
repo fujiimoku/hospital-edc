@@ -73,7 +73,7 @@ function renderPatientTable(items, total) {
       <td class="px-4 py-3 text-sm">${gender}</td>
       <td class="px-4 py-3 text-sm">${p.age || '—'}</td>
       <td class="px-4 py-3 text-sm">${enroll}</td>
-      <td class="px-4 py-3 text-xs text-gray-500">—</td>
+      <td class="px-4 py-3 text-xs text-gray-500">${STUDY_GROUP_LABELS[p.study_group] || '未分组'}</td>
       <td class="px-4 py-3"><span class="score-badge ${statusCls}">${statusTxt}</span></td>
       <td class="px-4 py-3"><button ${btnAttr} class="${btnCls}">录入</button></td>
     </tr>`;
@@ -113,7 +113,7 @@ function closeCreatePatientModal() {
   document.getElementById('modal-create-patient').classList.add('hidden');
   document.getElementById('cp-error').textContent = '';
   // 清空表单
-  ['cp-initials', 'cp-fullname', 'cp-idcard', 'cp-phone', 'cp-gender', 'cp-age', 'cp-marital', 'cp-enroll'].forEach(id => {
+  ['cp-initials', 'cp-fullname', 'cp-idcard', 'cp-phone', 'cp-gender', 'cp-age', 'cp-marital', 'cp-enroll', 'cp-group'].forEach(id => {
     document.getElementById(id).value = '';
   });
 }
@@ -146,6 +146,7 @@ async function submitCreatePatient() {
 
   try {
     const payload = {
+      study_group: document.getElementById('cp-group').value || null,
       name_initials: initials,
       gender,
       age: age ? parseInt(age) : null,

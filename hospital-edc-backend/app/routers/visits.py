@@ -76,8 +76,13 @@ def create_visit(
         )
         .first()
     )
+    if data.visit_type == "interim":
+        existing = db.query(Visit).filter(
+            Visit.patient_id == patient.id, Visit.visit_type == "interim",
+            Visit.visit_date == data.visit_date,
+        ).first()
     if existing:
-        raise HTTPException(400, f"该患者已存在 {data.visit_type} 访视记录")
+        raise HTTPException(400, "该患者已存在此主访视或同日中间采集记录")
 
     visit = Visit(
         patient_id=data.patient_id,

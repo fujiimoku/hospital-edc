@@ -16,6 +16,7 @@ function setToken(t) {
 }
 
 function clearToken() {
+  if (typeof WeeklyEntry !== 'undefined') { WeeklyEntry.stop(); WeeklyEntry.week = ''; }
   sessionStorage.removeItem('edc_token');
   sessionStorage.removeItem('edc_user');
 }
@@ -53,4 +54,13 @@ async function api(method, path, body) {
     throw new Error(err.detail || '请求失败');
   }
   return res.json();
+}
+
+
+const STUDY_GROUP_LABELS = {
+  integrated_weekly: '三一照护+周制剂', integrated_daily: '三一照护+日制剂',
+  usual_weekly: '常规治疗+周制剂', usual_daily: '常规治疗+日制剂',
+};
+function escapeText(value) {
+  return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }

@@ -1,5 +1,5 @@
-from pydantic import BaseModel
-from typing import Optional, List
+from pydantic import BaseModel, Field, model_validator
+from typing import Optional, List, Literal
 from datetime import date
 
 
@@ -33,29 +33,31 @@ class LabResultsIn(BaseModel):
 
 # ---- 合并症 ----
 class ComorbidityIn(BaseModel):
-    hypertension: Optional[int] = 0
+    hypertension: Optional[Literal[0, 1]] = None
     hypertension_date: Optional[str] = None
-    ckd: Optional[int] = 0
+    hypertension_cause: Optional[str] = None
+    ckd: Optional[Literal[0, 1]] = None
     ckd_date: Optional[str] = None
-    chd: Optional[int] = 0
+    ckd_cause: Optional[str] = None
+    chd: Optional[Literal[0, 1]] = None
     chd_date: Optional[str] = None
-    angina: Optional[int] = 0
+    angina: Optional[Literal[0, 1]] = None
     angina_date: Optional[str] = None
-    mi: Optional[int] = 0
+    mi: Optional[Literal[0, 1]] = None
     mi_date: Optional[str] = None
-    stroke: Optional[int] = 0
+    stroke: Optional[Literal[0, 1]] = None
     stroke_date: Optional[str] = None
     # 糖尿病并发症
-    dr: Optional[int] = 0
+    dr: Optional[Literal[0, 1]] = None
     dr_date: Optional[str] = None
     dr_macular: Optional[bool] = False
     dr_non_proliferative: Optional[bool] = False
     dr_proliferative: Optional[bool] = False
-    dn: Optional[int] = 0
+    dn: Optional[Literal[0, 1]] = None
     dn_date: Optional[str] = None
     dn_peripheral: Optional[bool] = False
     dn_autonomic: Optional[bool] = False
-    df: Optional[int] = 0
+    df: Optional[Literal[0, 1]] = None
     df_date: Optional[str] = None
     df_healed_ulcer: Optional[bool] = False
     df_active_ulcer: Optional[bool] = False
@@ -63,11 +65,12 @@ class ComorbidityIn(BaseModel):
 
 # ---- 核心指标（费用）----
 class CostIndicatorIn(BaseModel):
-    drug_cost: Optional[float] = 0
-    lab_cost: Optional[float] = 0
-    service_cost: Optional[float] = 0
-    supply_cost: Optional[float] = 0
-    other_cost: Optional[float] = 0
+    crf_version: Optional[Literal[1]] = None
+    drug_cost: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)
+    lab_cost: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)
+    service_cost: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)
+    supply_cost: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)
+    other_cost: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)
 
 
 # ---- 药物 ----
@@ -88,6 +91,7 @@ class MedicationBatchIn(BaseModel):
 
 # ---- 问卷（PHQ-9 / GAD-7 / EQ-5D / DTSQ）----
 class QuestionnaireIn(BaseModel):
+    crf_version: Optional[Literal[1]] = None
     questionnaire_type: str   # phq9 | gad7 | eq5d | dtsq
 
     # PHQ-9 / GAD-7
@@ -112,6 +116,22 @@ class QuestionnaireIn(BaseModel):
     # DTSQ 开放性文本
     dtsq_open_text: Optional[str] = None
 
+    @model_validator(mode="after")
+    def validate_crf_answers(self):
+        if self.questionnaire_type == "dtsq":
+            for i in range(1, 10):
+                value = getattr(self, f"q{i}")
+                if value is not None and not 1 <= value <= 5:
+                    raise ValueError("DTSQ 选项必须在 1 至 5 之间")
+        if self.questionnaire_type == "eq5d":
+            for key in ("eq_mobility", "eq_self_care", "eq_usual_activity", "eq_pain", "eq_anxiety"):
+                value = getattr(self, key)
+                if value is not None and not 1 <= value <= 5:
+                    raise ValueError("EQ-5D 选项必须在 1 至 5 之间")
+            if self.eq_vas_score is not None and not 0 <= self.eq_vas_score <= 100:
+                raise ValueError("健康状况评分必须在 0 至 100 之间")
+        return self
+
     # PHQ-9 就诊症状（逗号分隔字符串）
     phq9_symptoms: Optional[str] = None
 
@@ -135,3 +155,13 @@ class MealRecordIn(BaseModel):
 
 class MealRecordBatchIn(BaseModel):
     records: List[MealRecordIn]
+
+
+class FollowupSafetyIn(BaseModel):
+    hypoglycemia: Optional[Literal[1, 2]] = None
+    symptomatic: Optional[bool] = None
+    nocturnal: Optional[bool] = None
+    severe: Optional[bool] = None
+    gastrointestinal: Optional[bool] = None
+    allergy: Optional[bool] = None
+    other: Optional[str] = None

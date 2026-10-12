@@ -1,9 +1,13 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Literal
+from app.study import StudyGroup
 from datetime import date, datetime
 
 
 class PatientCreate(BaseModel):
+    study_group: Optional[StudyGroup] = None
+    smoking_history: Optional[Literal[1, 2]] = None
+    drinking_history: Optional[Literal[1, 2]] = None
     name_initials: str
     full_name: Optional[str] = None        # 明文入参，后端加密存储
     id_card: Optional[str] = None          # 身份证号（明文入参，后端加密存储）
@@ -28,6 +32,9 @@ class PatientCreate(BaseModel):
 
 
 class PatientUpdate(BaseModel):
+    study_group: Optional[StudyGroup] = None
+    smoking_history: Optional[Literal[1, 2]] = None
+    drinking_history: Optional[Literal[1, 2]] = None
     name_initials: Optional[str] = None
     full_name: Optional[str] = None
     id_card: Optional[str] = None
@@ -54,6 +61,9 @@ class PatientUpdate(BaseModel):
 
 
 class PatientOut(BaseModel):
+    study_group: Optional[StudyGroup] = None
+    smoking_history: Optional[Literal[1, 2]] = None
+    drinking_history: Optional[Literal[1, 2]] = None
     id: int
     patient_code: str
     center_code: Optional[str]

@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, Date, DateTime, ForeignKey, Enum
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
+from app.study import VISIT_TYPES
 
 class Visit(Base):
     __tablename__ = "visits"
@@ -9,7 +10,7 @@ class Visit(Base):
     id = Column(Integer, primary_key=True, index=True)
     patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
     visit_type = Column(
-        Enum("baseline", "M6", "M12", "M18", "M24"),
+        Enum(*VISIT_TYPES),
         nullable=False
     )
     visit_date = Column(Date, nullable=False)
@@ -32,3 +33,4 @@ class Visit(Base):
     questionnaires = relationship("Questionnaire", back_populates="visit")
     lifestyle = relationship("LifestyleAssessment", back_populates="visit", uselist=False)
     meal_records = relationship("MealRecord", back_populates="visit")
+    followup_safety = relationship("FollowupSafety", back_populates="visit", uselist=False, cascade="all, delete-orphan")

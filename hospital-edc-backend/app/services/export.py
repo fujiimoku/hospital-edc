@@ -15,9 +15,10 @@ import pandas as pd
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.center import Center
+from app.study import STUDY_GROUPS
 from app.models.patient import Patient
 from app.models.visit import Visit
-from app.models.forms import PhysicalExam, LabResults, Comorbidity, CostIndicator
+from app.models.forms import PhysicalExam, LabResults, Comorbidity, CostIndicator, FollowupSafety
 from app.models.medication import Medication
 from app.models.questionnaire import Questionnaire
 from app.models.adverse_event import AdverseEvent
@@ -65,6 +66,11 @@ def build_patient_table(db: Session, center_ids, deidentify: bool = True,
         rows.append({
             "patient_code": p.patient_code,
             "center_code": p.center_code,
+            "study_group": p.study_group,
+            "study_group_label": STUDY_GROUPS.get(p.study_group, "未分组"),
+            "smoking_history": p.smoking_history,
+            "drinking_history": p.drinking_history,
+            "visit_number": p.visit_number,
             "center_name": p.center.center_name if p.center else None,
             "full_name": mask(full_name, 1) if deidentify else full_name,
             "id_card": mask(id_card, 3) if deidentify else id_card,
@@ -109,6 +115,8 @@ def build_visit_wide_table(db: Session, center_ids, status_filter=None,
         vq = vq.filter(Visit.status.in_(visit_status))
 
     rows = []
+    safety_map = {s.visit_id: s for s in db.query(FollowupSafety).join(Visit).join(Patient).filter(
+        Patient.center_id.in_(center_ids) if center_ids is not None else True).all()}
     for v in vq.order_by(Patient.patient_code, Visit.visit_date).all():
         pe = v.physical_exam or PhysicalExam(visit_id=v.id)
         lab = v.lab_results or LabResults(visit_id=v.id)
@@ -119,6 +127,7 @@ def build_visit_wide_table(db: Session, center_ids, status_filter=None,
         gad7 = qmap.get("gad7")
         eq5d = qmap.get("eq5d")
         dtsq = qmap.get("dtsq")
+        safety = safety_map.get(v.id)
 
         phq9_total = phq9.total_score if phq9 else None
         gad7_total = gad7.total_score if gad7 else None
@@ -126,6 +135,7 @@ def build_visit_wide_table(db: Session, center_ids, status_filter=None,
         rows.append({
             "patient_code": v.patient.patient_code,
             "center_code": v.patient.center_code,
+            "study_group": v.patient.study_group,
             "visit_type": v.visit_type,
             "visit_date": v.visit_date,
             "visit_status": _label(VISIT_STATUS_LABEL, v.status),
@@ -142,10 +152,15 @@ def build_visit_wide_table(db: Session, center_ids, status_filter=None,
             "hypertension": cm.hypertension, "ckd": cm.ckd, "chd": cm.chd,
             "angina": cm.angina, "mi": cm.mi, "stroke": cm.stroke,
             "dr": cm.dr, "dn": cm.dn, "df": cm.df,
+            **{c.name: getattr(cm, c.name) for c in Comorbidity.__table__.columns
+               if c.name not in ("id", "visit_id")},
+            **{"safety_" + c.name: getattr(safety, c.name) if safety else None
+               for c in FollowupSafety.__table__.columns if c.name not in ("id", "visit_id")},
             # 费用
             "drug_cost": cost.drug_cost, "lab_cost": cost.lab_cost,
             "service_cost": cost.service_cost, "supply_cost": cost.supply_cost,
             "other_cost": cost.other_cost,
+            "cost_crf_version": cost.crf_version,
             # 量表总分/分级
             "phq9_total": phq9_total,
             "phq9_level": calc_phq9_level(int(phq9_total)) if phq9_total is not None else None,
@@ -157,8 +172,12 @@ def build_visit_wide_table(db: Session, center_ids, status_filter=None,
             "eq5d_pain": eq5d.eq_pain if eq5d else None,
             "eq5d_anxiety": eq5d.eq_anxiety if eq5d else None,
             "eq5d_vas": eq5d.eq_vas_score if eq5d else None,
-            "dtsq_total": (sum(getattr(dtsq, f"q{i}") or 0 for i in range(1, 10))
-                           if dtsq else None),
+            # Retain column for compatibility, but CRF supplies no validated total rule.
+            "dtsq_total": None,
+            "dtsq_crf_version": dtsq.crf_version if dtsq else None,
+            **{f"dtsq_q{number}": getattr(dtsq, f"q{stored}") if dtsq else None
+               for number, stored in [(i, i) for i in range(1, 8)] + [(9, 8), (10, 9)]},
+            "dtsq_q8_text": dtsq.dtsq_open_text if dtsq else None,
         })
     return pd.DataFrame(rows)
 
@@ -225,6 +244,26 @@ def build_data_dictionary() -> pd.DataFrame:
         D.append({"sheet": sheet, "变量名": var, "中文含义": meaning,
                   "类型": vtype, "取值编码": codes or "", "单位": unit or ""})
 
+    # CRF additions; legacy codes remain explicit in the dictionary.
+    for sheet in ["患者主表", "访视宽表"]:
+        add(sheet, "study_group", "研究组别", "字符串", "; ".join(f"{k}={v}" for k,v in STUDY_GROUPS.items()) + ";空值=未分组")
+    add("患者主表", "study_group_label", "组别名称", "字符串")
+    add("患者主表", "visit_number", "就诊号", "字符串")
+    for k in ("smoking_history", "drinking_history"):
+        add("患者主表", k, "CRF 吸烟史" if k.startswith("smoking") else "CRF 饮酒史", "整数", "1=从不;2=目前或曾经;空=未核对")
+    for k in ("hypertension", "ckd", "chd", "angina", "mi", "stroke", "dr", "dn", "df"):
+        add("访视宽表", k + "_date", "诊断时间: " + k, "字符串", "年/月/日，可部分日期")
+    for k in ("hypertension_cause", "ckd_cause"):
+        add("访视宽表", k, "诊断病因: " + k, "字符串")
+    for k in ("dr_macular", "dr_non_proliferative", "dr_proliferative", "dn_peripheral", "dn_autonomic", "df_healed_ulcer", "df_active_ulcer"):
+        add("访视宽表", k, "并发症分型: " + k, "布尔", "true=选中;false=未选中")
+    for k in ("hypoglycemia", "symptomatic", "nocturnal", "severe", "gastrointestinal", "allergy", "other"):
+        add("访视宽表", "safety_" + k, "随访不良反应: " + k, "整数/布尔/文本", "低血糖1=无2=有;分型true=选中;空=未填")
+    for k in ("cost_crf_version", "dtsq_crf_version"):
+        add("访视宽表", k, "CRF 核对版本", "整数", "1=新版;空=历史版本未核对")
+    for i in list(range(1, 8)) + [9, 10]:
+        add("访视宽表", f"dtsq_q{i}", f"CRF DTSQ 第{i}题选项序号", "整数", "1-5，按原表顺序，空=未答")
+    add("访视宽表", "dtsq_q8_text", "CRF DTSQ 第8题建议或改进意见", "文本")
     # 患者主表
     add("患者主表", "patient_code", "患者编号（中心前缀-4位流水，如 TJ01-0001）", "字符串")
     add("患者主表", "center_code", "中心编号", "字符串", "TJ-01~TJ-07")
@@ -251,7 +290,7 @@ def build_data_dictionary() -> pd.DataFrame:
     # 访视宽表
     add("访视宽表", "patient_code", "患者编号（与患者主表关联）", "字符串")
     add("访视宽表", "center_code", "中心编号", "字符串", "TJ-01~TJ-07")
-    add("访视宽表", "visit_type", "访视类型", "字符串", "baseline/M6/M12/M18/M24")
+    add("访视宽表", "visit_type", "访视类型", "字符串", "baseline=V1/W12=V2/W26=V3/interim=中间采集;M6/M12/M18/M24=历史访视")
     add("访视宽表", "visit_date", "访视日期", "日期")
     add("访视宽表", "visit_status", "访视状态", "字符串", "草稿/待审核/质控通过/已签名/已锁定")
     add("访视宽表", "height_cm", "身高", "小数", unit="cm")
@@ -293,12 +332,12 @@ def build_data_dictionary() -> pd.DataFrame:
                          ("eq5d_anxiety", "EQ-5D 焦虑/沮丧")]:
         add("访视宽表", var, meaning, "整数", "1无困难~5无法/极度严重（5级）")
     add("访视宽表", "eq5d_vas", "EQ-5D 健康视觉模拟评分", "整数", "0最差~100最好")
-    add("访视宽表", "dtsq_total", "DTSQ 糖尿病治疗满意度总分", "整数", "9-45（9题各1-5分）")
+    add("访视宽表", "dtsq_total", "保留兼容列：原表未规定总分算法", "空值", "请分析各题原始回答，不生成总分")
 
     # 用药表
     add("用药表", "patient_code", "患者编号（与患者主表关联）", "字符串")
     add("用药表", "center_code", "中心编号", "字符串")
-    add("用药表", "visit_type", "访视类型", "字符串", "baseline/M6/M12/M18/M24")
+    add("用药表", "visit_type", "访视类型", "字符串", "baseline=V1/W12=V2/W26=V3/interim=中间采集;M6/M12/M18/M24=历史访视")
     add("用药表", "visit_date", "访视日期", "日期")
     add("用药表", "treatment_type", "治疗类别", "字符串", "糖尿病/高血压/降脂/抗血小板/抗凝/其他")
     add("用药表", "drug_name", "药品名称", "字符串")

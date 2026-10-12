@@ -1,8 +1,8 @@
 """随访窗口提醒（需求优先级 2）。
 
 按访视计划窗口期，对即将到期/已到期但未完成访视的患者生成站内提醒。
-窗口期定义待项目方确认，目前用固定间隔占位：
-  baseline = 入组当月；M6 = 入组+6个月；M12 = +12个月；M18 = +18个月；M24 = +24个月。
+主访视：baseline=基线；W12=入组后84天；W26=入组后182天。
+中间采集按实际日期记录，尚无固定提醒计划。
 到期前 7 天开始提醒；已过窗口仍提醒（标记"已超期"）。
 """
 from datetime import date, timedelta
@@ -14,13 +14,11 @@ from app.models.patient import Patient
 from app.models.user import User
 from app.models.visit import Visit
 
-# 访视计划：访视类型 → 距入组的天数（占位间隔，待项目方确认）
+# 主访视：访视类型 → 距入组的天数
 VISIT_PLAN_DAYS = {
     "baseline": 0,
-    "M6": 182,
-    "M12": 365,
-    "M18": 547,
-    "M24": 730,
+    "W12": 84,
+    "W26": 182,
 }
 REMIND_AHEAD_DAYS = 7  # 到期前 7 天开始提醒
 
@@ -28,6 +26,9 @@ REMIND_AHEAD_DAYS = 7  # 到期前 7 天开始提醒
 def _next_expected_visit(patient: Patient, existing: dict) -> tuple:
     """返回 (visit_type, due_date)；全部完成则返回 (None, None)。"""
     if not patient.enrollment_date:
+        return None, None
+    # 历史月访视不能自动解释成新的周访视；待研究者核对。
+    if any(vt in existing for vt in ("M6", "M12", "M18", "M24")):
         return None, None
     for vt, offset in VISIT_PLAN_DAYS.items():
         if vt not in existing:

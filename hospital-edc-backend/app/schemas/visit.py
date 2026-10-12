@@ -1,11 +1,12 @@
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import date, datetime
+from app.study import VisitType
 
 
 class VisitCreate(BaseModel):
     patient_id: Optional[int] = None   # 通过 URL 传入时可省略
-    visit_type: str          # baseline | M6 | M12 | M18 | M24
+    visit_type: VisitType
     visit_date: date
 
 

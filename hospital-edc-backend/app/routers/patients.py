@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import exists
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 from app.database import get_db
 from app.models.center import Center
@@ -132,8 +133,12 @@ def create_patient(
         full_name_encrypted=encrypt(data.full_name) if data.full_name else None,
         id_card_encrypted=encrypt(data.id_card) if data.id_card else None,
         created_by=current_user.id,
+        created_at=datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None),
     )
     db.add(patient)
+    db.flush()
+    log_change(db, current_user, "patients", patient.id,
+               {"study_group": (None, patient.study_group)}, "create", center_id=patient.center_id)
     db.commit()
     db.refresh(patient)
     _apply_privacy(patient, current_user)
@@ -221,6 +226,12 @@ def update_patient(
         raise HTTPException(403, "无权修改该患者")
 
     changes = data.model_dump(exclude_unset=True)
+    crf_fields = {"study_group", "visit_number", "enrollment_date", "employment_status",
+                  "education_level", "insurance_coverage", "smoking_history", "smoking_per_day",
+                  "drinking_history", "drinking_per_day"}
+    if any(getattr(patient, k) != changes[k] for k in crf_fields & changes.keys()):
+        if db.query(Visit.id).filter(Visit.patient_id == patient_id, Visit.status != "draft").first():
+            raise HTTPException(400, "患者已有提交后的访视，基本信息更正须先由总管理员退回相关访视并留痕")
     # 敏感字段单独加密处理
     full_name = changes.pop("full_name", None)
     id_card = changes.pop("id_card", None)
@@ -245,7 +256,7 @@ def update_patient(
     if id_card is not None:
         patient.id_card_encrypted = encrypt(id_card)
 
-    log_change(db, current_user, "patients", patient.id, diff, "update")
+    log_change(db, current_user, "patients", patient.id, diff, "update", center_id=patient.center_id)
     if full_name is not None:
         log_change(db, current_user, "patients", patient.id,
                    {"full_name": ("***", "***")}, "update")
@@ -325,8 +336,13 @@ def create_patient_visit(
         .filter(Visit.patient_id == patient_id, Visit.visit_type == data.visit_type)
         .first()
     )
+    if data.visit_type == "interim":
+        existing = db.query(Visit).filter(
+            Visit.patient_id == patient.id, Visit.visit_type == "interim",
+            Visit.visit_date == data.visit_date,
+        ).first()
     if existing:
-        raise HTTPException(400, f"该患者已存在 {data.visit_type} 访视记录")
+        raise HTTPException(400, "该患者已存在此主访视或同日中间采集记录")
     visit = Visit(
         patient_id=patient_id,
         visit_type=data.visit_type,

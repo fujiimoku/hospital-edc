@@ -63,7 +63,8 @@ def test_export_xlsx_sheets_and_scores(client, admin_token):
     ws = wb["患者主表"]
     h = [c.value for c in ws[1]]
     rows = list(ws.iter_rows(min_row=2, values_only=True))
-    row = dict(zip(h, rows[0]))
+    row = next(dict(zip(h, values)) for values in rows
+               if values[h.index("patient_code")] == p["patient_code"])
     assert "*" in row["full_name"]
     assert "*" in row["id_card"]
 

@@ -1,5 +1,6 @@
 // 页面导航
 function showPage(name, el) {
+  if (name !== 'dashboard' && typeof WeeklyEntry !== 'undefined') WeeklyEntry.stop();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
   document.getElementById('page-' + name).classList.add('fade-in');
@@ -46,7 +47,7 @@ async function loadPatientsPage() {
 
   if (!pageEl.hasAttribute('data-loaded')) {
     try {
-      const response = await fetch('pages/patients.html?v=20260912a');
+      const response = await fetch('pages/patients.html?v=20261012crf');
       const html = await response.text();
       pageEl.innerHTML = html;
       pageEl.setAttribute('data-loaded', 'true');
@@ -73,7 +74,7 @@ async function loadEntry() {
 
   if (!pageEl.hasAttribute('data-loaded')) {
     try {
-      const response = await fetch('pages/visit-entry.html?v=20260912a');
+      const response = await fetch('pages/visit-entry.html?v=20261012crf');
       const html = await response.text();
       pageEl.innerHTML = html;
       pageEl.setAttribute('data-loaded', 'true');
@@ -105,7 +106,7 @@ async function loadConsent() {
 
   if (!pageEl.hasAttribute('data-loaded')) {
     try {
-      const response = await fetch('pages/consent.html?v=20260912a');
+      const response = await fetch('pages/consent.html?v=20261012crf');
       pageEl.innerHTML = await response.text();
       pageEl.setAttribute('data-loaded', 'true');
       if (typeof ConsentPage !== 'undefined') {
@@ -128,7 +129,7 @@ async function loadRecordedPatients() {
 
   if (!pageEl.hasAttribute('data-loaded')) {
     try {
-      const response = await fetch('pages/recorded.html?v=20260912a');
+      const response = await fetch('pages/recorded.html?v=20261012crf');
       pageEl.innerHTML = await response.text();
       pageEl.setAttribute('data-loaded', 'true');
     } catch (e) {
@@ -152,7 +153,7 @@ async function loadReview() {
 
   if (!pageEl.hasAttribute('data-loaded')) {
     try {
-      const response = await fetch('pages/review.html?v=20260912a');
+      const response = await fetch('pages/review.html?v=20261012crf');
       const html = await response.text();
       pageEl.innerHTML = html;
       pageEl.setAttribute('data-loaded', 'true');
@@ -178,7 +179,7 @@ async function loadExport() {
 
   if (!pageEl.hasAttribute('data-loaded')) {
     try {
-      const response = await fetch('pages/export.html?v=20260912a');
+      const response = await fetch('pages/export.html?v=20261012crf');
       const html = await response.text();
       pageEl.innerHTML = html;
       pageEl.setAttribute('data-loaded', 'true');

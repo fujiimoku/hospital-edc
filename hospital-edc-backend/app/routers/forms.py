@@ -3,12 +3,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.visit import Visit
-from app.models.forms import PhysicalExam, LabResults, Comorbidity, CostIndicator
+from app.models.forms import PhysicalExam, LabResults, Comorbidity, CostIndicator, FollowupSafety
 from app.models.medication import Medication
 from app.models.questionnaire import Questionnaire
 from app.models.lifestyle import LifestyleAssessment, MealRecord
 from app.schemas.forms import (
-    PhysicalExamIn, LabResultsIn, ComorbidityIn, CostIndicatorIn,
+    PhysicalExamIn, LabResultsIn, ComorbidityIn, CostIndicatorIn, FollowupSafetyIn,
     MedicationBatchIn, QuestionnaireIn, LifestyleIn, MealRecordBatchIn,
 )
 from app.dependencies import get_current_user, get_accessible_center_ids
@@ -57,21 +57,21 @@ def _get_unlocked_visit(visit_id: int, db: Session, current_user=None) -> Visit:
     return visit
 
 
-def _upsert(db: Session, model_cls, filter_kwargs: dict, data: dict, current_user=None):
+def _upsert(db: Session, model_cls, filter_kwargs: dict, data: dict, current_user=None, *, audit_center_id=None):
     obj = db.query(model_cls).filter_by(**filter_kwargs).first()
     if obj:
         diff = diff_model(obj, data)
         for k, v in data.items():
             setattr(obj, k, v)
         if diff and current_user is not None:
-            log_change(db, current_user, model_cls.__tablename__, obj.id, diff, "update")
+            log_change(db, current_user, model_cls.__tablename__, obj.id, diff, "update", center_id=audit_center_id)
     else:
         obj = model_cls(**filter_kwargs, **data)
         db.add(obj)
         db.flush()
         if current_user is not None:
             log_change(db, current_user, model_cls.__tablename__, obj.id,
-                       {k: (None, v) for k, v in data.items()}, "create")
+                       {k: (None, v) for k, v in data.items()}, "create", center_id=audit_center_id)
     db.commit()
     db.refresh(obj)
     return obj
@@ -270,6 +270,18 @@ def save_meals(visit_id: int, data: MealRecordBatchIn, db: Session = Depends(get
     return save_meal_records(visit_id, data, db, current_user)
 
 
+@router.post("/{visit_id}/followup-safety")
+def save_followup_safety(visit_id: int, data: FollowupSafetyIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    visit = _get_unlocked_visit(visit_id, db, current_user)
+    payload = data.model_dump(exclude_unset=True)
+    existing = db.query(FollowupSafety).filter_by(visit_id=visit_id).first()
+    merged = {**(_to_dict(existing) or {}), **payload}
+    if merged.get("hypoglycemia") != 2 and any(merged.get(k) for k in ("symptomatic", "nocturnal", "severe")):
+        raise HTTPException(422, "勾选低血糖类型时，请选择有低血糖")
+    _upsert(db, FollowupSafety, {"visit_id": visit_id}, payload, current_user, audit_center_id=visit.patient.center_id)
+    return {"message": "不良反应记录已保存"}
+
+
 #  一次性获取全部表单数据 
 @router.get("/{visit_id}/all-forms")
 def get_all_forms(visit_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
@@ -278,6 +290,7 @@ def get_all_forms(visit_id: int, db: Session = Depends(get_db), current_user=Dep
         raise HTTPException(404, "访视不存在")
     return {
         "visit": _to_dict(visit),
+        "followup_safety": _to_dict(db.query(FollowupSafety).filter_by(visit_id=visit_id).first()),
         "physical_exam": _to_dict(db.query(PhysicalExam).filter_by(visit_id=visit_id).first()),
         "lab_results": _to_dict(db.query(LabResults).filter_by(visit_id=visit_id).first()),
         "comorbidity": _to_dict(db.query(Comorbidity).filter_by(visit_id=visit_id).first()),

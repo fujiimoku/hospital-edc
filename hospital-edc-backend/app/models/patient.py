@@ -12,6 +12,11 @@ class Patient(Base):
     center_code = Column(String(20), default="CHN-017")
     center_id = Column(Integer, ForeignKey("centers.id"), nullable=False)
 
+    study_group = Column(String(32), nullable=True, index=True)
+    # CRF 二分类字段单列保存，避免改变旧三/四分类编码的含义。
+    smoking_history = Column(Integer)
+    drinking_history = Column(Integer)
+
     # 姓名拼音首字母（脱敏）
     name_initials = Column(String(10))
     # 完整姓名（Fernet 加密存储，见 app/utils/crypto.py）

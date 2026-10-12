@@ -5,7 +5,8 @@
 - /data-completeness 数据完整率：按中心 / 按表单
 - /summary           汇总聚合数（分中心也可看全局聚合，但不含患者明细）
 """
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
+from app.study import STUDY_GROUPS, VISIT_TYPES
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query as FQuery
@@ -26,6 +27,44 @@ from app.models.user import User
 router = APIRouter(prefix="/api/reports", tags=["统计报表"])
 
 DONE_STATUSES = ("submitted", "qc_passed", "signed", "locked")
+
+
+@router.get("/weekly-entry")
+def weekly_entry_report(
+    week: Optional[date] = FQuery(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """与 summary 一样提供跨中心聚合，不包含患者明细。
+
+    按建档时间计人，不按入组日期或访视次数。生产 MySQL 的时区为上海；
+    新建档也显式使用上海时间，保证周一零点边界一致。
+    """
+    now = datetime.now(timezone(timedelta(hours=8)))
+    day = week or now.date()
+    start = day - timedelta(days=day.weekday())
+    end = start + timedelta(days=7)
+    rows = db.query(Patient.center_id, Patient.study_group, func.count(Patient.id)).filter(
+        Patient.created_at >= datetime.combine(start, datetime.min.time()),
+        Patient.created_at < datetime.combine(end, datetime.min.time()),
+    ).group_by(Patient.center_id, Patient.study_group).all()
+    centers = {c.id: {"center_id": c.id, "center_code": c.center_code,
+                     "center_name": c.center_name, "total": 0,
+                     "groups": dict.fromkeys(STUDY_GROUPS, 0), "unassigned": 0}
+               for c in db.query(Center).order_by(Center.center_code).all()}
+    for cid, group, count in rows:
+        row = centers.setdefault(cid, {"center_id": cid, "center_code": "-",
+                                       "center_name": "未分配", "total": 0,
+                                       "groups": dict.fromkeys(STUDY_GROUPS, 0), "unassigned": 0})
+        row["total"] += count
+        if group in STUDY_GROUPS:
+            row["groups"][group] += count
+        else:
+            row["unassigned"] += count
+    return {"week_start": start, "week_end": end - timedelta(days=1),
+            "generated_at": now.isoformat(), "basis": "created_at", "timezone": "Asia/Shanghai",
+            "groups": STUDY_GROUPS, "items": list(centers.values()),
+            "total": sum(c["total"] for c in centers.values())}
 
 
 def _center_scope(q, current_user):
@@ -114,7 +153,7 @@ def visit_completion_report(
         if status_ in DONE_STATUSES:
             s["done"] += cnt
     result = []
-    for vt in ("baseline", "M6", "M12", "M18", "M24"):
+    for vt in VISIT_TYPES:
         if vt not in stats:
             continue
         s = stats[vt]

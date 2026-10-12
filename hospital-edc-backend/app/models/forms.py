@@ -55,8 +55,10 @@ class Comorbidity(Base):
     # 合并症（0=无, 1=有）
     hypertension = Column(Integer, default=0)
     hypertension_date = Column(String(20))
+    hypertension_cause = Column(String(500))
     ckd = Column(Integer, default=0)
     ckd_date = Column(String(20))
+    ckd_cause = Column(String(500))
     chd = Column(Integer, default=0)          # 冠心病
     chd_date = Column(String(20))
     angina = Column(Integer, default=0)       # 心绞痛
@@ -92,12 +94,24 @@ class CostIndicator(Base):
     id = Column(Integer, primary_key=True)
     visit_id = Column(Integer, ForeignKey("visits.id"), unique=True, nullable=False)
 
-    drug_cost = Column(Float, default=0)        # 药品费
-    lab_cost = Column(Float, default=0)         # 检查化验费
-    service_cost = Column(Float, default=0)     # 诊疗服务费
-    supply_cost = Column(Float, default=0)      # 耗材费（试纸/针头）
-    other_cost = Column(Float, default=0)
+    crf_version = Column(Integer, nullable=True)  # 1=2026-10 CRF；NULL=旧版待核对
+    drug_cost = Column(Float, nullable=True)        # 药品费
+    lab_cost = Column(Float, nullable=True)         # 检查化验费
+    service_cost = Column(Float, nullable=True)     # 诊疗服务费
+    supply_cost = Column(Float, nullable=True)      # 耗材费（试纸/针头）
+    other_cost = Column(Float, nullable=True)
 
     visit = relationship("Visit", back_populates="cost_indicators")
 
-    visit = relationship("Visit", back_populates="cost_indicators")
+class FollowupSafety(Base):
+    __tablename__ = "followup_safety"
+    id = Column(Integer, primary_key=True)
+    visit_id = Column(Integer, ForeignKey("visits.id"), unique=True, nullable=False)
+    hypoglycemia = Column(Integer, nullable=True)  # CRF 1=无, 2=有
+    symptomatic = Column(Boolean, nullable=True)
+    nocturnal = Column(Boolean, nullable=True)
+    severe = Column(Boolean, nullable=True)
+    gastrointestinal = Column(Boolean, nullable=True)
+    allergy = Column(Boolean, nullable=True)
+    other = Column(Text, nullable=True)
+    visit = relationship("Visit", back_populates="followup_safety")

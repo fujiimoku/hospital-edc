@@ -1,0 +1,9 @@
+# Reuse the verified running backend dependencies; this release adds no packages.
+ARG BASE_IMAGE=edc-backend:prod
+FROM ${BASE_IMAGE}
+WORKDIR /app
+COPY hospital-edc-backend/app /app/app
+COPY hospital-edc-backend/alembic /app/alembic
+COPY hospital-edc-backend/alembic.ini /app/alembic.ini
+COPY hospital-edc-backend/scripts /app/scripts
+COPY hospital-edc-frontend /app/hospital-edc-frontend

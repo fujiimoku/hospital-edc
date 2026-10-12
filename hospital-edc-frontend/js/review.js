@@ -4,7 +4,7 @@
 //   研究者(researcher)可答疑/签名；质控员(qc)可通过/关闭/提质疑；
 //   管理员(center_admin/main_admin)三者皆可；锁定仅管理员。
 const ReviewPage = {
-  VISIT_TYPE_LABEL: { baseline: '基线', M6: '6月', M12: '12月', M18: '18月', M24: '24月' },
+  VISIT_TYPE_LABEL: { baseline: 'V1 基线', W12: 'V2 第12周', W26: 'V3 第26周', interim: '中间采集', M6: '6月', M12: '12月', M18: '18月', M24: '24月' },
   VISIT_STATUS_LABEL: { submitted: '待质控审核', qc_passed: '质控通过', signed: '已签名' },
   _data: null,          // /api/review/queue 的缓存
   _patientsById: Object.create(null),

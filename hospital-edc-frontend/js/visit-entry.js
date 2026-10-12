@@ -50,6 +50,7 @@ const VisitEntry = {
   // 重置录入页状态（切换患者/未选择患者时，清除上一个患者/访视的残留数据）
   resetEntryState() {
     this.stopAutosave();
+    this._supplementaryEnabled = false;
     this.currentVisit = null;
     this.updateVisitStatusBadge();
     const select = document.getElementById('entry-visit-select');
@@ -66,11 +67,12 @@ const VisitEntry = {
   clearForms() {
     const area = document.getElementById('entry-form-area');
     if (!area) return;
-    area.querySelectorAll('input[type="text"], input[type="number"], textarea').forEach(el => { el.value = ''; });
+    area.querySelectorAll('input[type="text"], input[type="number"], input[type="date"], select, textarea').forEach(el => { el.value = ''; });
     area.querySelectorAll('input[type="checkbox"], input[type="radio"]').forEach(el => { el.checked = false; });
     // 滑块复位到默认值，并同步其分数/数值标签
     area.querySelectorAll('input[type="range"]').forEach(el => {
       el.value = el.defaultValue;
+      delete el.dataset.answered;
       ['-val', '-score'].forEach(suffix => {
         const label = document.getElementById(el.id + suffix);
         if (label) label.textContent = el.value;
@@ -84,6 +86,7 @@ const VisitEntry = {
     this.calculatePHQ9();
     this.calculateGAD7();
     this.calculateDTSQ();
+    this.calculateEQ5D();
     this.calculateDietScore();
     this.calculateExerciseScore();
     this.showWarnings([]);
@@ -101,7 +104,7 @@ const VisitEntry = {
     try {
       const visits = await api('GET', `/api/patients/${this.currentPatient.id}/visits`);
       select.innerHTML = '<option value="">选择访视…</option>' + visits.map(v => {
-        const typeLabel = { baseline: '基线', M6: '6月', M12: '12月', M18: '18月', M24: '24月' }[v.visit_type] || v.visit_type;
+        const typeLabel = { baseline: 'V1 基线', W12: 'V2 第12周', W26: 'V3 第26周', interim: '中间采集', M6: '历史6月', M12: '历史12月', M18: '历史18月', M24: '历史24月' }[v.visit_type] || v.visit_type;
         const statusLabel = { draft: '草稿', submitted: '待审核', qc_passed: '质控通过', signed: '已签名', locked: '已锁定' }[v.status] || v.status;
         return `<option value="${v.id}">${typeLabel}（${v.visit_date}）· ${statusLabel}</option>`;
       }).join('');
@@ -131,16 +134,19 @@ const VisitEntry = {
       return;
     }
     try {
+      this.stopAutosave();
       const visit = await api('GET', `/api/visits/${visitId}`);
       this.currentVisit = visit;
+      document.querySelector('[data-followup-safety-tab]')?.classList.toggle('hidden', visit.visit_type === 'baseline');
+      if (visit.visit_type === 'baseline' && !document.getElementById('tab-safety')?.classList.contains('hidden')) {
+        document.getElementById('tab-safety').classList.add('hidden');
+        document.getElementById('tab-physical').classList.remove('hidden');
+      }
       this.updateVisitStatusBadge();
       if (typeof QcBar !== 'undefined') QcBar.refresh();
-      if (visit.status === 'draft') {
-        this.startAutosave();
-      } else {
-        this.stopAutosave();
-      }
+      this.clearForms();
       await this.loadVisitForms(visitId);
+      if (visit.status === 'draft') this.startAutosave();
       this.updateEditability();
       document.getElementById('entry-no-visit-tip').style.display = 'none';
       document.getElementById('entry-form-area').style.display = 'block';
@@ -187,6 +193,7 @@ const VisitEntry = {
       this.fillForms(data);
     } catch (e) {
       console.error('加载表单数据失败:', e);
+      throw e;
     }
   },
 
@@ -209,7 +216,7 @@ const VisitEntry = {
     }
 
     // 费用总计自动计算
-    ['cost-drug', 'cost-exam', 'cost-hospital', 'cost-other'].forEach(id => {
+    ['cost-drug', 'cost-exam', 'cost-service', 'cost-supply', 'cost-other'].forEach(id => {
       const input = document.getElementById(id);
       if (input) {
         input.addEventListener('input', () => this.calculateTotalCost());
@@ -249,10 +256,11 @@ const VisitEntry = {
   calculateTotalCost() {
     const drug = parseFloat(document.getElementById('cost-drug').value) || 0;
     const exam = parseFloat(document.getElementById('cost-exam').value) || 0;
-    const hospital = parseFloat(document.getElementById('cost-hospital').value) || 0;
+    const hospital = parseFloat(document.getElementById('cost-service').value) || 0;
     const other = parseFloat(document.getElementById('cost-other').value) || 0;
 
-    const total = drug + exam + hospital + other;
+    const supply = parseFloat(document.getElementById('cost-supply')?.value) || 0;
+    const total = drug + exam + hospital + supply + other;
     document.getElementById('cost-total').textContent = `¥ ${total.toFixed(2)}`;
   },
 
@@ -419,7 +427,8 @@ const VisitEntry = {
       .filter(n => document.querySelector(`input[name="${n}"]:checked`)).length;
     const vasVal = document.getElementById('eq5d-vas-val');
     if (vasVal) {
-      vasVal.textContent = document.getElementById('eq5d-vas')?.value ?? vasVal.textContent;
+      const vas = document.getElementById('eq5d-vas');
+      vasVal.textContent = vas?.dataset.answered === '1' ? vas.value : '未填写';
     }
     const summary = document.getElementById('eq5d-summary');
     if (summary) summary.textContent = `已答 ${answered} / 5 个维度`;
@@ -435,17 +444,25 @@ const VisitEntry = {
       '5. 您是否担心治疗方案的不良反应（如低血糖、体重增加等）？',
       '6. 您认为目前的治疗方案对日常生活的干扰程度如何？',
       '7. 如果可以重新选择，您是否愿意继续使用目前的治疗方案？',
-      '8. 您对治疗方案的费用负担满意吗？',
-      '9. 您认为治疗方案的学习和操作难度如何？',
+      '9. 您对治疗方案的费用负担满意吗？',
+      '10. 您认为治疗方案的学习和操作难度如何？',
     ];
-    const opts = ['非常不满意', '比较不满意', '一般', '比较满意', '非常满意'];
+    const satisfaction = ['非常不满意', '比较不满意', '既非满意也非不满意', '比较满意', '非常满意'];
+    const options = [satisfaction,
+      ['完全无效','效果很差','效果一般','效果较好','效果非常好'],
+      ['极度困扰','比较困扰','轻微困扰','几乎不困扰','完全不困扰'], satisfaction,
+      ['极度担心','比较担心','轻微担心','几乎不担心','完全不担心'],
+      ['严重干扰','比较干扰','轻微干扰','几乎不干扰','完全不干扰'],
+      ['绝对不愿意','不太愿意','不确定','比较愿意','绝对愿意'], satisfaction,
+      ['非常困难','比较困难','一般','比较容易','非常容易']];
     const container = document.getElementById('dtsq-questions');
     if (!container) return;
+    const openBlock = document.getElementById('dtsq-open-text')?.parentElement;
     container.innerHTML = items.map((q, i) => `
       <div class="border border-gray-200 rounded-lg p-4">
         <div class="text-sm text-gray-700 mb-3">${q}</div>
         <div class="flex gap-2">
-          ${opts.map((label, v) => `
+          ${options[i].map((label, v) => `
             <label class="flex-1 cursor-pointer">
               <input type="radio" name="dtsq-q${i}" value="${v + 1}" class="hidden dtsq-radio" onchange="VisitEntry.calculateDTSQ()"/>
               <div class="border-2 border-gray-200 rounded-lg px-1 py-2 text-center text-xs hover:border-blue-400 transition">
@@ -456,6 +473,7 @@ const VisitEntry = {
         </div>
       </div>
     `).join('');
+    if (openBlock) container.insertBefore(openBlock, container.children[7]);
     container.querySelectorAll('.dtsq-radio').forEach(radio => {
       radio.addEventListener('change', (e) => {
         const label = e.target.closest('label');
@@ -469,13 +487,13 @@ const VisitEntry = {
     });
   },
 
-  // 计算DTSQ总分
+  // 显示已答题数：CRF 未定义总分规则
   calculateDTSQ() {
     let total = 0;
     for (let i = 0; i < 9; i++) {
       const selected = document.querySelector(`input[name="dtsq-q${i}"]:checked`);
       if (selected) {
-        total += parseInt(selected.value);
+        total += 1;
       }
     }
     document.getElementById('dtsq-score').textContent = total;
@@ -629,26 +647,12 @@ const VisitEntry = {
     const medDiv = document.createElement('div');
     medDiv.className = 'border border-gray-200 rounded-lg p-4';
     medDiv.innerHTML = `
-      <div class="flex items-center justify-between mb-3">
-        <div class="text-sm font-semibold text-gray-700">药物 ${index + 1}</div>
-        <button onclick="this.closest('.border').remove()" class="text-red-500 hover:text-red-700 text-xs">删除</button>
-      </div>
+      <div class="flex justify-between mb-3"><span>药物 ${index + 1}</span><button onclick="this.closest('.medication-row').remove()" class="text-red-500 text-xs">删除</button></div>
       <div class="grid grid-cols-3 gap-3">
-        <div>
-          <label class="text-xs text-gray-500 mb-1 block">药品名称</label>
-          <input type="text" value="${med.drug_name || ''}" class="med-name w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="如：二甲双胍"/>
-        </div>
-        <div>
-          <label class="text-xs text-gray-500 mb-1 block">剂量</label>
-          <input type="text" value="${med.dose || ''}" class="med-dosage w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="如：500mg"/>
-        </div>
-        <div>
-          <label class="text-xs text-gray-500 mb-1 block">频次</label>
-          <input type="text" value="${med.frequency || ''}" class="med-frequency w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="如：每日2次"/>
-        </div>
-      </div>
-    `;
-
+      ${[['treatment_type','治疗类型（糖尿病／高血压／降脂等）','text'],['drug_name','药剂名','text'],['route','给药途径','text'],['dose','用药剂量','text'],['frequency','用药频率（请写完整中文，如每周两次）','text'],['start_date','开始日期','date'],['end_date','结束日期（如有）','date']].map(([key,label,type]) => `<label class="text-xs text-gray-500">${label}<input type="${type}" data-med-field="${key}" value="${escapeText(med[key])}" class="w-full border rounded-lg p-2 text-sm"/></label>`).join('')}
+      <label class="text-xs text-gray-500">正在进行<select data-med-field="is_ongoing" class="w-full border rounded-lg p-2"><option value="true">是</option><option value="false">否</option></select></label></div>`;
+    medDiv.classList.add('medication-row');
+    medDiv.querySelector('[data-med-field="is_ongoing"]').value = med.is_ongoing === false ? 'false' : 'true';
     container.appendChild(medDiv);
   },
 
@@ -678,19 +682,28 @@ const VisitEntry = {
       this.setInputValue('lab-alt', lab.alt);
       this.setInputValue('lab-ast', lab.ast);
       this.setInputValue('lab-cr', lab.scr);
+      this.setInputValue('lab-test-date', lab.test_date);
       this.setInputValue('lab-bun', lab.bun);
+      this.setInputValue('lab-egfr', lab.egfr);
+      this.setInputValue('lab-ua', lab.ua);
     }
 
     const cm = data.comorbidity;
     if (cm) {
-      this.setChecked('cm-hypertension', cm.hypertension === 1);
-      this.setChecked('cm-ckd', cm.ckd === 1);
-      this.setChecked('cm-chd', cm.chd === 1);
-      this.setChecked('cm-stroke', cm.stroke === 1);
-      this.setChecked('cm-retinopathy', cm.dr === 1);
-      this.setChecked('cm-neuropathy', cm.dn === 1);
-      this.setChecked('cm-diabetic-foot', cm.df === 1);
+      for (const field of this.comorbidityFields) this.setInputValue('cm-' + field, cm[field]);
+      for (const field of this.comorbidityFlags) this.setChecked('cm-' + field, cm[field]);
     }
+    const safety = data.followup_safety;
+    if (safety) {
+      this.setInputValue('safety-hypoglycemia', safety.hypoglycemia);
+      this.setInputValue('safety-other', safety.other);
+      for (const field of this.safetyFlags) this.setChecked('safety-' + field, safety[field]);
+    }
+    this.fillPatientProfile();
+    this._legacyCost = !!data.cost_indicators && data.cost_indicators.crf_version !== 1;
+    this._legacyDtsq = !!data.questionnaires?.dtsq && data.questionnaires.dtsq.crf_version !== 1;
+    document.getElementById('cost-legacy-warning')?.classList.toggle('hidden', !this._legacyCost);
+    document.getElementById('dtsq-legacy-warning')?.classList.toggle('hidden', !this._legacyDtsq);
 
     // 用药
     const medList = document.getElementById('medication-list');
@@ -702,8 +715,9 @@ const VisitEntry = {
     if (cost) {
       this.setInputValue('cost-drug', cost.drug_cost);
       this.setInputValue('cost-exam', cost.lab_cost);
-      this.setInputValue('cost-hospital', cost.service_cost);
+      this.setInputValue('cost-service', cost.service_cost);
       this.setInputValue('cost-other', cost.other_cost);
+      this.setInputValue('cost-supply', cost.supply_cost);
       this.calculateTotalCost();
     }
 
@@ -733,6 +747,7 @@ const VisitEntry = {
       const vas = document.getElementById('eq5d-vas');
       if (vas && eq5d.eq_vas_score != null) {
         vas.value = eq5d.eq_vas_score;
+        vas.dataset.answered = '1';
         document.getElementById('eq5d-vas-val').textContent = eq5d.eq_vas_score;
       }
     }
@@ -831,22 +846,24 @@ const VisitEntry = {
         alt: this.getInputValue('lab-alt'),
         ast: this.getInputValue('lab-ast'),
         scr: this.getInputValue('lab-cr'),
+        test_date: document.getElementById('lab-test-date')?.value || null,
         bun: this.getInputValue('lab-bun'),
+        egfr: this.getInputValue('lab-egfr'),
+        ua: this.getInputValue('lab-ua'),
       },
-      comorbidity: {
-        hypertension: document.getElementById('cm-hypertension')?.checked ? 1 : 0,
-        ckd: document.getElementById('cm-ckd')?.checked ? 1 : 0,
-        chd: document.getElementById('cm-chd')?.checked ? 1 : 0,
-        stroke: document.getElementById('cm-stroke')?.checked ? 1 : 0,
-        dr: document.getElementById('cm-retinopathy')?.checked ? 1 : 0,
-        dn: document.getElementById('cm-neuropathy')?.checked ? 1 : 0,
-        df: document.getElementById('cm-diabetic-foot')?.checked ? 1 : 0,
+      comorbidity: this.collectComorbidity(),
+      followup_safety: {
+        hypoglycemia: this.getInputValue('safety-hypoglycemia'),
+        ...Object.fromEntries(this.safetyFlags.map(k => [k, document.getElementById('safety-' + k)?.checked || false])),
+        other: document.getElementById('safety-other')?.value.trim() || null,
       },
       medications: this.collectMedications(),
       cost_indicators: {
+        crf_version: 1,
+        supply_cost: this.getInputValue('cost-supply'),
         drug_cost: this.getInputValue('cost-drug'),
         lab_cost: this.getInputValue('cost-exam'),
-        service_cost: this.getInputValue('cost-hospital'),
+        service_cost: this.getInputValue('cost-service'),
         other_cost: this.getInputValue('cost-other'),
       },
       questionnaires: {
@@ -863,6 +880,43 @@ const VisitEntry = {
     };
   },
 
+  comorbidityFields: ['hypertension','ckd','chd','angina','mi','stroke','dr','dn','df'].flatMap(k => [k, k + '_date']).concat(['hypertension_cause','ckd_cause']),
+  comorbidityFlags: ['dr_macular','dr_non_proliferative','dr_proliferative','dn_peripheral','dn_autonomic','df_healed_ulcer','df_active_ulcer'],
+  safetyFlags: ['symptomatic','nocturnal','severe','gastrointestinal','allergy'],
+  profileFields: ['study_group','visit_number','enrollment_date','employment_status','education_level','insurance_coverage','smoking_history','smoking_per_day','drinking_history','drinking_per_day'],
+  collectComorbidity() {
+    const result = {};
+    for (const k of this.comorbidityFields) {
+      const value = document.getElementById('cm-' + k)?.value;
+      result[k] = value === '' || value == null ? null : (k.includes('_') ? value.trim() : Number(value));
+    }
+    for (const k of this.comorbidityFlags) result[k] = document.getElementById('cm-' + k)?.checked || false;
+    return result;
+  },
+  fillPatientProfile() {
+    if (!this.currentPatient) return;
+    for (const k of this.profileFields) this.setInputValue('bp-' + k, this.currentPatient[k]);
+    for (const kind of ['smoking','drinking']) {
+      if (this.currentPatient[kind + '_history'] == null && this.currentPatient[kind + '_status'] != null) {
+        this.setInputValue('bp-' + kind + '_history', this.currentPatient[kind + '_status'] === 1 ? 1 : 2);
+      }
+    }
+  },
+  async savePatientProfile() {
+    if (!this.currentPatient || this.currentVisit?.status !== 'draft') return;
+    const payload = {};
+    for (const k of this.profileFields) {
+      const raw = document.getElementById('bp-' + k)?.value;
+      payload[k] = raw === '' || raw == null ? null : (['study_group','visit_number','enrollment_date'].includes(k) ? raw.trim() : Number(raw));
+    }
+    try {
+      this.currentPatient = await api('PUT', `/api/patients/${this.currentPatient.id}`, payload);
+      sessionStorage.setItem('currentPatient', JSON.stringify(this.currentPatient));
+      this.updatePatientInfo();
+      showToast('基本信息已保存');
+    } catch (e) { showToast(e.message, 'error'); }
+  },
+
   // 获取输入值
   getInputValue(id) {
     const input = document.getElementById(id);
@@ -876,14 +930,12 @@ const VisitEntry = {
     const container = document.getElementById('medication-list');
     if (!container) return medications;
 
-    container.querySelectorAll('.border').forEach(medDiv => {
-      const drug_name = medDiv.querySelector('.med-name')?.value?.trim();
-      const dose = medDiv.querySelector('.med-dosage')?.value?.trim();
-      const frequency = medDiv.querySelector('.med-frequency')?.value?.trim();
-
-      if (drug_name) {
-        medications.push({ drug_name, dose, frequency });
-      }
+    container.querySelectorAll('.medication-row').forEach(row => {
+      const item = {};
+      row.querySelectorAll('[data-med-field]').forEach(el => {
+        item[el.dataset.medField] = el.dataset.medField === 'is_ongoing' ? el.value === 'true' : el.value.trim() || null;
+      });
+      if (item.drug_name) medications.push(item);
     });
 
     return medications;
@@ -908,13 +960,14 @@ const VisitEntry = {
       result[field] = selected ? parseInt(selected.value) : null;
     });
     const vas = document.getElementById('eq5d-vas');
-    result.eq_vas_score = vas ? parseInt(vas.value) : null;
+    result.eq_vas_score = vas?.dataset.answered === '1' ? parseInt(vas.value) : null;
     return result;
   },
 
   // 收集 DTSQ
   collectDTSQ() {
     const result = this.collectLikert('dtsq-q', 9);
+    result.crf_version = 1;
     result.dtsq_open_text = document.getElementById('dtsq-open-text')?.value?.trim() || null;
     return result;
   },
@@ -990,7 +1043,7 @@ const VisitEntry = {
 
   // 保存全部表单到后端（各表单独立接口）
   async saveAllForms(verbose = true) {
-    if (!this.currentVisit) return false;
+    if (!this.currentVisit || this.currentVisit.status !== 'draft') return false;
     const visitId = this.currentVisit.id;
     const data = this.collectFormData();
     const allWarnings = [];
@@ -998,10 +1051,10 @@ const VisitEntry = {
       ['physical-exam', data.physical_exam],
       ['lab-results', data.lab_results],
       ['comorbidity', data.comorbidity],
-      ['cost-indicators', data.cost_indicators],
+      ...(!this._legacyCost || document.getElementById('cost-reviewed')?.checked ? [['cost-indicators', data.cost_indicators]] : []),
+      ...(this.currentVisit.visit_type !== 'baseline' ? [['followup-safety', data.followup_safety]] : []),
       ['medications', { medications: data.medications }],
-      ['lifestyle', data.lifestyle],
-      ['meal-records', { records: data.meal_records }],
+      ...(this._supplementaryEnabled ? [['lifestyle', data.lifestyle], ['meal-records', { records: data.meal_records }]] : []),
     ];
     for (const [endpoint, payload] of tasks) {
       try {
@@ -1014,8 +1067,10 @@ const VisitEntry = {
     }
     // 问卷：逐类型提交
     for (const qType of ['phq9', 'gad7', 'eq5d', 'dtsq']) {
+      if (['phq9', 'gad7'].includes(qType) && !this._supplementaryEnabled) continue;
+      if (qType === 'dtsq' && this._legacyDtsq && !document.getElementById('dtsq-reviewed')?.checked) continue;
       const payload = data.questionnaires[qType];
-      if (Object.values(payload).some(v => v !== null && v !== undefined)) {
+      if (Object.entries(payload).some(([k, v]) => k !== 'crf_version' && v !== null && v !== undefined)) {
         try {
           await api('POST', `/api/visits/${visitId}/questionnaire`, {
             questionnaire_type: qType,
