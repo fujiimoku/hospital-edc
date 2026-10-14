@@ -89,3 +89,54 @@ def test_database_failure_after_deletion_rolls_back_everything(trial_db):
         event.remove(trial_db,'before_cursor_execute',fail_insert)
     with trial_db.connect() as c:
         reset.compare(c,before)
+
+
+def install_reviewed_centers(connection):
+    centers=Base.metadata.tables['centers']
+    for cid,name in enumerate(reset.OLD_CENTER_NAMES,1):
+        values=dict(center_code=f'TJ-{cid:02d}',center_name=name,is_main_center=cid==1,is_active=cid<6)
+        if cid<=2:
+            connection.execute(centers.update().where(centers.c.id==cid).values(**values))
+        else:
+            connection.execute(centers.insert().values(id=cid,**values))
+
+
+def test_formal_roster_preserves_existing_ids_and_enables_eight_centers(trial_db):
+    with trial_db.begin() as c:
+        install_reviewed_centers(c)
+        before=reset.snapshot(c)
+        reset.reset_database(c,before,'hospital_admin','Synthetic-Password-2026',1,[],formal_centers=True)
+    with trial_db.connect() as c:
+        reset.verify_formal_centers(c)
+        t=Base.metadata.tables
+        admin=c.execute(select(t['users']).where(t['users'].c.username=='hospital_admin')).mappings().one()
+        assert admin['center_id']==1 and admin['is_active']==1
+        assert c.execute(select(t['patients'])).first() is None
+
+
+def test_unexpected_centers_refuse_formal_setup_before_deleting(trial_db):
+    with trial_db.connect() as c:
+        before=reset.snapshot(c)
+    with pytest.raises(ValueError,match='中心列表'):
+        with trial_db.begin() as c:
+            reset.reset_database(c,before,'hospital_admin','Synthetic-Password-2026',1,[],formal_centers=True)
+    with trial_db.connect() as c:
+        reset.compare(c,before)
+
+
+def test_formal_roster_changes_rollback_if_account_creation_fails(trial_db):
+    with trial_db.begin() as c:
+        install_reviewed_centers(c)
+        before=reset.snapshot(c)
+    def fail_insert(conn,cursor,statement,parameters,context,executemany):
+        if statement.startswith('INSERT INTO users'):
+            raise RuntimeError('simulated failure after centers changed')
+    event.listen(trial_db,'before_cursor_execute',fail_insert)
+    try:
+        with pytest.raises(RuntimeError,match='simulated'):
+            with trial_db.begin() as c:
+                reset.reset_database(c,before,'hospital_admin','Synthetic-Password-2026',1,[],formal_centers=True)
+    finally:
+        event.remove(trial_db,'before_cursor_execute',fail_insert)
+    with trial_db.connect() as c:
+        reset.compare(c,before)

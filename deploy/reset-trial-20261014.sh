@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Scope confirmed for this hospital: 9 test patients, 16 visits, 1 image, 8 consents.
-# Preserve audit/user identities; disable all existing centers, accounts and invitations.
+# Preserve audit/user identities; configure the confirmed eight centers; disable old accounts and invitations.
 set -Eeuo pipefail
 umask 077
 BACKUP_DIR=''
@@ -46,23 +46,24 @@ docker stop edc-prod-nginx edc-prod-backend >/dev/null
 docker exec edc-prod-mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -uroot --single-transaction --routines --triggers --events --hex-blob --no-tablespaces --set-gtid-purged=OFF "$MYSQL_DATABASE"' | gzip > "$BACKUP_DIR/database.sql.gz"
 gzip -t "$BACKUP_DIR/database.sql.gz"
 docker cp edc-prod-backend:/app/uploads "$BACKUP_DIR/uploads"
-"${RUN[@]}" python /ops/reset_trial_data.py --plan /trial-reset/before.json
+"${RUN[@]}" python /ops/reset_trial_data.py --formal-centers --plan /trial-reset/before.json
 # Recheck the user-reviewed scope after writes have been stopped (not just before stopping).
 "${RUN[@]}" python -c 'import json; p=json.load(open("/trial-reset/before.json")); expected={"patients":9,"visits":16,"patient_images":1,"consent_records":8}; assert all(p[k]["count"]==v for k,v in expected.items()), "备份时数据数量变化，停止清理"; from app.config import settings; from pathlib import Path; assert Path(settings.UPLOAD_DIR).resolve()==Path("/app/uploads"), "上传目录不是预期卷，停止清理"'
-printf '\n备份完成：%s\n即将创建 hospital_admin（中心1），停用所有旧中心、旧账号和邀请码。\n请设置至少16位密码；输入时不会显示字符。\n' "$BACKUP_DIR"
-"${RUN[@]}" python /ops/reset_trial_data.py --plan /trial-reset/before.json --apply --username hospital_admin --center-id 1 --disable-centers
+printf '\n备份完成：%s\n即将创建 hospital_admin（中心1），配置并启用医大二主中心及7个分中心，停用旧账号和邀请码。\n请设置至少16位密码；输入时不会显示字符。\n' "$BACKUP_DIR"
+"${RUN[@]}" python /ops/reset_trial_data.py --formal-centers --plan /trial-reset/before.json --apply --username hospital_admin --center-id 1
 # Retire test files outside the live upload volume, without permanently deleting the backup.
 "${RUN[@]}" python -c 'from pathlib import Path; import shutil; from app.config import settings; root=Path(settings.UPLOAD_DIR).resolve(); assert root==Path("/app/uploads"); target=Path("/trial-reset/retired-uploads"); target.mkdir(); [shutil.move(str(p),str(target/p.name)) for p in root.iterdir()]; print("原测试上传文件已移出在线目录并归档到备份目录")'
+"${RUN[@]}" python -c 'import sys; sys.path[:0]=["/ops","/app"]; from reset_trial_data import engine,verify_formal_centers; c=engine.connect(); verify_formal_centers(c); print("8个正式中心名称、编号和启用状态校验通过")'
 docker start edc-prod-backend >/dev/null
 for attempt in $(seq 1 60); do
   if [[ $(docker inspect -f '{{.State.Health.Status}}' edc-prod-backend) == healthy ]]; then break; fi
   sleep 2
 done
 [[ $(docker inspect -f '{{.State.Health.Status}}' edc-prod-backend) == healthy ]]
-docker exec edc-prod-backend python -c 'from app.database import engine; from sqlalchemy import text; c=engine.connect(); assert c.execute(text("SELECT COUNT(*) FROM patients")).scalar()==0; assert c.execute(text("SELECT COUNT(*) FROM patient_images")).scalar()==0; users=c.execute(text("SELECT username,role,center_id FROM users WHERE is_active=1")).all(); assert users==[("hospital_admin","main_admin",1)],str(users); assert c.execute(text("SELECT COUNT(*) FROM centers WHERE is_active=1")).scalar()==0; assert c.execute(text("SELECT COUNT(*) FROM invitation_codes WHERE is_active=1")).scalar()==0; print("清理及账号权限校验通过")'
+docker exec edc-prod-backend python -c 'from app.database import engine; from sqlalchemy import text; c=engine.connect(); assert c.execute(text("SELECT COUNT(*) FROM patients")).scalar()==0; assert c.execute(text("SELECT COUNT(*) FROM patient_images")).scalar()==0; users=c.execute(text("SELECT username,role,center_id FROM users WHERE is_active=1")).all(); assert users==[("hospital_admin","main_admin",1)],str(users); assert c.execute(text("SELECT COUNT(*) FROM centers WHERE is_active=1")).scalar()==8; assert c.execute(text("SELECT COUNT(*) FROM invitation_codes WHERE is_active=1")).scalar()==0; print("清理及账号权限校验通过")'
 docker start edc-prod-nginx >/dev/null
 docker exec edc-prod-nginx nginx -t
 docker exec edc-prod-nginx nginx -s reload
 docker exec edc-prod-nginx wget -q -O /dev/null http://127.0.0.1/
 MAINTENANCE=0
-printf '\n测试数据清理完成；唯一启用账号：hospital_admin。\n旧中心全部停用；确认中心并启用后才能建档。\n备份与原图归档：%s\n' "$BACKUP_DIR"
+printf '\n测试数据清理完成；唯一启用账号：hospital_admin。\n医大二为主中心，7个分中心已配置并启用；管理员归属医大二。\n备份与原图归档：%s\n' "$BACKUP_DIR"
