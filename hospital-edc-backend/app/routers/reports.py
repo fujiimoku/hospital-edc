@@ -6,7 +6,7 @@
 - /summary           汇总聚合数（分中心也可看全局聚合，但不含患者明细）
 """
 from datetime import date, datetime, timedelta, timezone
-from app.study import STUDY_GROUPS, VISIT_TYPES
+from app.study import STUDY_GROUPS, VISIT_TYPES, SUBGROUP_LABELS, GROUP_SUBGROUPS
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query as FQuery
@@ -44,26 +44,29 @@ def weekly_entry_report(
     day = week or now.date()
     start = day - timedelta(days=day.weekday())
     end = start + timedelta(days=7)
-    rows = db.query(Patient.center_id, Patient.study_group, func.count(Patient.id)).filter(
+    rows = db.query(Patient.center_id, Patient.study_group, Patient.study_subgroup, func.count(Patient.id)).filter(
         Patient.created_at >= datetime.combine(start, datetime.min.time()),
         Patient.created_at < datetime.combine(end, datetime.min.time()),
-    ).group_by(Patient.center_id, Patient.study_group).all()
+    ).group_by(Patient.center_id, Patient.study_group, Patient.study_subgroup).all()
     centers = {c.id: {"center_id": c.id, "center_code": c.center_code,
                      "center_name": c.center_name, "total": 0,
-                     "groups": dict.fromkeys(STUDY_GROUPS, 0), "unassigned": 0}
+                     "groups": dict.fromkeys(STUDY_GROUPS, 0), "unassigned": 0,
+                     "subgroups": {g: dict.fromkeys([*GROUP_SUBGROUPS[g], "unassigned"], 0) for g in STUDY_GROUPS}}
                for c in db.query(Center).order_by(Center.center_code).all()}
-    for cid, group, count in rows:
+    for cid, group, subgroup, count in rows:
         row = centers.setdefault(cid, {"center_id": cid, "center_code": "-",
                                        "center_name": "未分配", "total": 0,
-                                       "groups": dict.fromkeys(STUDY_GROUPS, 0), "unassigned": 0})
+                                       "groups": dict.fromkeys(STUDY_GROUPS, 0), "unassigned": 0,
+                     "subgroups": {g: dict.fromkeys([*GROUP_SUBGROUPS[g], "unassigned"], 0) for g in STUDY_GROUPS}})
         row["total"] += count
         if group in STUDY_GROUPS:
             row["groups"][group] += count
+            row["subgroups"][group][subgroup if subgroup in GROUP_SUBGROUPS[group] else "unassigned"] += count
         else:
             row["unassigned"] += count
     return {"week_start": start, "week_end": end - timedelta(days=1),
             "generated_at": now.isoformat(), "basis": "created_at", "timezone": "Asia/Shanghai",
-            "groups": STUDY_GROUPS, "items": list(centers.values()),
+            "groups": STUDY_GROUPS, "subgroup_labels": SUBGROUP_LABELS, "items": list(centers.values()),
             "total": sum(c["total"] for c in centers.values())}
 
 

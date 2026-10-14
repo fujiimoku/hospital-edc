@@ -1,10 +1,11 @@
 from pydantic import BaseModel
 from typing import Optional, Literal
-from app.study import StudyGroup
+from app.study import StudyGroup, StudySubgroup
 from datetime import date, datetime
 
 
 class PatientCreate(BaseModel):
+    study_subgroup: Optional[StudySubgroup] = None
     study_group: Optional[StudyGroup] = None
     smoking_history: Optional[Literal[1, 2]] = None
     drinking_history: Optional[Literal[1, 2]] = None
@@ -32,6 +33,7 @@ class PatientCreate(BaseModel):
 
 
 class PatientUpdate(BaseModel):
+    study_subgroup: Optional[StudySubgroup] = None
     study_group: Optional[StudyGroup] = None
     smoking_history: Optional[Literal[1, 2]] = None
     drinking_history: Optional[Literal[1, 2]] = None
@@ -61,6 +63,7 @@ class PatientUpdate(BaseModel):
 
 
 class PatientOut(BaseModel):
+    study_subgroup: Optional[StudySubgroup] = None
     study_group: Optional[StudyGroup] = None
     smoking_history: Optional[Literal[1, 2]] = None
     drinking_history: Optional[Literal[1, 2]] = None

@@ -883,7 +883,7 @@ const VisitEntry = {
   comorbidityFields: ['hypertension','ckd','chd','angina','mi','stroke','dr','dn','df'].flatMap(k => [k, k + '_date']).concat(['hypertension_cause','ckd_cause']),
   comorbidityFlags: ['dr_macular','dr_non_proliferative','dr_proliferative','dn_peripheral','dn_autonomic','df_healed_ulcer','df_active_ulcer'],
   safetyFlags: ['symptomatic','nocturnal','severe','gastrointestinal','allergy'],
-  profileFields: ['study_group','visit_number','enrollment_date','employment_status','education_level','insurance_coverage','smoking_history','smoking_per_day','drinking_history','drinking_per_day'],
+  profileFields: ['study_group','study_subgroup','visit_number','enrollment_date','employment_status','education_level','insurance_coverage','smoking_history','smoking_per_day','drinking_history','drinking_per_day'],
   collectComorbidity() {
     const result = {};
     for (const k of this.comorbidityFields) {
@@ -895,6 +895,7 @@ const VisitEntry = {
   },
   fillPatientProfile() {
     if (!this.currentPatient) return;
+    fillStudySubgroups(this.currentPatient.study_group, 'bp-study_subgroup', this.currentPatient.study_subgroup);
     for (const k of this.profileFields) this.setInputValue('bp-' + k, this.currentPatient[k]);
     for (const kind of ['smoking','drinking']) {
       if (this.currentPatient[kind + '_history'] == null && this.currentPatient[kind + '_status'] != null) {
@@ -907,7 +908,7 @@ const VisitEntry = {
     const payload = {};
     for (const k of this.profileFields) {
       const raw = document.getElementById('bp-' + k)?.value;
-      payload[k] = raw === '' || raw == null ? null : (['study_group','visit_number','enrollment_date'].includes(k) ? raw.trim() : Number(raw));
+      payload[k] = raw === '' || raw == null ? null : (['study_group','study_subgroup','visit_number','enrollment_date'].includes(k) ? raw.trim() : Number(raw));
     }
     try {
       this.currentPatient = await api('PUT', `/api/patients/${this.currentPatient.id}`, payload);

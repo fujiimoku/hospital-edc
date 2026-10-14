@@ -58,9 +58,25 @@ async function api(method, path, body) {
 
 
 const STUDY_GROUP_LABELS = {
-  integrated_weekly: '三一照护+周制剂', integrated_daily: '三一照护+日制剂',
-  usual_weekly: '常规治疗+周制剂', usual_daily: '常规治疗+日制剂',
+  integrated_weekly: 'A组：三一照护+周制剂', integrated_daily: 'B组：三一照护+每日注射',
+  usual_weekly: 'C组：常规诊疗+周制剂', usual_daily: 'D组：常规诊疗+周制剂',
 };
 function escapeText(value) {
   return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+const STUDY_SUBGROUP_LABELS = {
+  icodec: '依柯胰岛素', semaglutide: '司美格鲁肽注射液',
+  icodec_semaglutide: '依柯胰岛素 + 司美格鲁肽注射液',
+  daily_glp1: '利拉鲁肽/利司那肽注射液', daily_insulin: '甘精/德谷/地特胰岛素',
+  daily_combination: '甘精胰岛素利司那肽注射液/德谷胰岛素利拉鲁肽注射液',
+};
+function fillStudySubgroups(group, targetId, selected = '') {
+  const el = document.getElementById(targetId);
+  if (!el) return;
+  const keys = !group ? [] : Object.keys(STUDY_SUBGROUP_LABELS).slice(
+    ['integrated_weekly', 'usual_weekly'].includes(group) ? 0 : 3,
+    ['integrated_weekly', 'usual_weekly'].includes(group) ? 3 : 6);
+  el.innerHTML = '<option value="">待确认</option>' + keys.map(k => `<option value="${k}">${escapeText(STUDY_SUBGROUP_LABELS[k])}</option>`).join('');
+  el.value = keys.includes(selected) ? selected : '';
 }

@@ -15,7 +15,7 @@ import pandas as pd
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.center import Center
-from app.study import STUDY_GROUPS
+from app.study import STUDY_GROUPS, SUBGROUP_LABELS
 from app.models.patient import Patient
 from app.models.visit import Visit
 from app.models.forms import PhysicalExam, LabResults, Comorbidity, CostIndicator, FollowupSafety
@@ -67,6 +67,8 @@ def build_patient_table(db: Session, center_ids, deidentify: bool = True,
             "patient_code": p.patient_code,
             "center_code": p.center_code,
             "study_group": p.study_group,
+            "study_subgroup": p.study_subgroup,
+            "study_subgroup_label": SUBGROUP_LABELS.get(p.study_subgroup, "待确认"),
             "study_group_label": STUDY_GROUPS.get(p.study_group, "未分组"),
             "smoking_history": p.smoking_history,
             "drinking_history": p.drinking_history,
@@ -136,6 +138,7 @@ def build_visit_wide_table(db: Session, center_ids, status_filter=None,
             "patient_code": v.patient.patient_code,
             "center_code": v.patient.center_code,
             "study_group": v.patient.study_group,
+            "study_subgroup": v.patient.study_subgroup,
             "visit_type": v.visit_type,
             "visit_date": v.visit_date,
             "visit_status": _label(VISIT_STATUS_LABEL, v.status),
@@ -246,7 +249,9 @@ def build_data_dictionary() -> pd.DataFrame:
 
     # CRF additions; legacy codes remain explicit in the dictionary.
     for sheet in ["患者主表", "访视宽表"]:
+        add(sheet, "study_subgroup", "用药细分组", "字符串", "; ".join(f"{k}={v}" for k,v in SUBGROUP_LABELS.items()))
         add(sheet, "study_group", "研究组别", "字符串", "; ".join(f"{k}={v}" for k,v in STUDY_GROUPS.items()) + ";空值=未分组")
+    add("患者主表", "study_subgroup_label", "用药细分组名称", "字符串")
     add("患者主表", "study_group_label", "组别名称", "字符串")
     add("患者主表", "visit_number", "就诊号", "字符串")
     for k in ("smoking_history", "drinking_history"):

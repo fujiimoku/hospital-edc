@@ -13,6 +13,7 @@ from app.dependencies import get_current_user, get_accessible_center_ids, requir
 from app.services.patient_code import generate_patient_code
 from app.services.audit import log_change, diff_model
 from app.utils.crypto import encrypt, decrypt, mask
+from app.study import valid_subgroup
 
 router = APIRouter(prefix="/api/patients", tags=["患者管理"])
 
@@ -119,6 +120,8 @@ def create_patient(
     if not center or not center.is_active:
         raise HTTPException(400, "所属中心不存在或已停用")
 
+    if not valid_subgroup(data.study_group, data.study_subgroup):
+        raise HTTPException(422, "用药细分组与研究组别不匹配")
     # 患者编号：按中心前缀 + 4 位流水号（如 TJ01-0001）
     code = generate_patient_code(db, center)
 
@@ -138,7 +141,7 @@ def create_patient(
     db.add(patient)
     db.flush()
     log_change(db, current_user, "patients", patient.id,
-               {"study_group": (None, patient.study_group)}, "create", center_id=patient.center_id)
+               {"study_group": (None, patient.study_group), "study_subgroup": (None, patient.study_subgroup)}, "create", center_id=patient.center_id)
     db.commit()
     db.refresh(patient)
     _apply_privacy(patient, current_user)
@@ -226,7 +229,10 @@ def update_patient(
         raise HTTPException(403, "无权修改该患者")
 
     changes = data.model_dump(exclude_unset=True)
-    crf_fields = {"study_group", "visit_number", "enrollment_date", "employment_status",
+    if not valid_subgroup(changes.get("study_group", patient.study_group),
+                          changes.get("study_subgroup", patient.study_subgroup)):
+        raise HTTPException(422, "用药细分组与研究组别不匹配，请同时选择对应的细分组")
+    crf_fields = {"study_group", "study_subgroup", "visit_number", "enrollment_date", "employment_status",
                   "education_level", "insurance_coverage", "smoking_history", "smoking_per_day",
                   "drinking_history", "drinking_per_day"}
     if any(getattr(patient, k) != changes[k] for k in crf_fields & changes.keys()):

@@ -2,6 +2,7 @@
 from app.models.center import Center, InvitationCode  # noqa
 from app.models.user import User  # noqa
 from app.models.patient import Patient  # noqa
+from app.models.patient_image import PatientImage  # noqa
 from app.models.visit import Visit  # noqa
 from app.models.forms import PhysicalExam, LabResults, Comorbidity, CostIndicator  # noqa
 from app.models.medication import Medication  # noqa

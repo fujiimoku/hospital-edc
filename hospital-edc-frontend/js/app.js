@@ -198,7 +198,7 @@ const WeeklyEntry = {
         <button onclick="WeeklyEntry.refresh()" class="text-blue-600 text-sm">刷新</button></div>
         <p class="text-xs text-gray-500 mb-3">${data.week_start} 至 ${data.week_end} · 北京时间周一至周日 · 按患者建档时间计人数，不重复计算随访；组别按当前登记结果。每30秒刷新。</p>
         <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th class="text-left p-2">分中心</th>${keys.map(k=>`<th class="p-2">${escapeText(data.groups[k])}</th>`).join('')}<th class="p-2">未分组</th><th class="p-2">合计</th></tr></thead><tbody>
-        ${data.items.map(c=>`<tr class="border-t"><td class="p-2">${escapeText(c.center_code)} ${escapeText(c.center_name)}</td>${keys.map(k=>`<td class="text-center p-2">${c.groups[k]}</td>`).join('')}<td class="text-center p-2">${c.unassigned}</td><td class="text-center p-2 font-semibold">${c.total}</td></tr>`).join('')}
+        ${data.items.map(c=>`<tr class="border-t"><td class="p-2">${escapeText(c.center_code)} ${escapeText(c.center_name)}</td>${keys.map(k=>`<td class="text-center p-2">${c.groups[k]}${c.subgroups?.[k] ? `<details class="text-xs mt-1"><summary>细分组</summary>${Object.entries(c.subgroups[k]).map(([sub,n])=>`<div class="py-1">${escapeText(data.subgroup_labels?.[sub] || '待确认')}：${n}</div>`).join('')}</details>` : ''}</td>`).join('')}<td class="text-center p-2">${c.unassigned}</td><td class="text-center p-2 font-semibold">${c.total}</td></tr>`).join('')}
         </tbody></table></div><div class="text-xs text-gray-500 mt-3">本周合计 ${data.total} 人 · 更新于 ${escapeText(new Date(data.generated_at).toLocaleString('zh-CN', {timeZone:'Asia/Shanghai'}))}（北京时间）</div>`;
     } catch (e) {
       if (generation !== this.generation) return;

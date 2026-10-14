@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.routers import auth, patients, visits, forms, consent, centers, invitation_codes, adverse_events, queries, export, audit, reports, notifications, review
 from app.database import engine, Base
+from app.routers import patient_images
 import app.models  # noqa: 确保所有 Model 在启动时被注册
 import os
 
@@ -41,6 +42,9 @@ async def no_cache_for_static(request: Request, call_next):
     开发/演示阶段前端频繁改动，缓存旧 JS 会造成"改了没生效"的假象。"""
     response = await call_next(request)
     path = request.url.path
+    if path.startswith("/api/patients/") and "/images" in path:
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["X-Content-Type-Options"] = "nosniff"
     if path.startswith(("/js", "/css", "/pages")) or path == "/":
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
@@ -49,6 +53,7 @@ async def no_cache_for_static(request: Request, call_next):
 
 app.include_router(auth.router)
 app.include_router(patients.router)
+app.include_router(patient_images.router)
 app.include_router(visits.router)
 app.include_router(forms.router)
 app.include_router(consent.router)
