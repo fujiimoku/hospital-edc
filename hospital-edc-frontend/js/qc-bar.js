@@ -19,12 +19,13 @@ const QcBar = {
     show('qc-btn-sign',   role === 'researcher' && st === 'qc_passed');
     show('qc-btn-lock',   (role === 'center_admin' || role === 'main_admin') && st === 'signed');
     show('qc-btn-unlock', role === 'main_admin' && st === 'locked');
-    show('qc-btn-reopen', role === 'main_admin' && ['submitted', 'qc_passed', 'signed'].includes(st));
+    show('qc-btn-reopen', role === 'main_admin' && ['qc_passed', 'signed'].includes(st));
+    show('qc-btn-withdraw', ['researcher', 'center_admin', 'main_admin'].includes(role) && st === 'submitted');
 
     const hints = {
       draft:     '草稿中 —— 研究者可继续录入，完成后点击页面底部「提交审核」',
       submitted: role === 'qc' ? '待质控审核 —— 可对可疑字段提起质疑；全部质疑关闭后方可通过'
-                               : '待质控审核 —— 等待质控员审核（如有质疑请在下方回复）',
+                               : '待质控审核 —— 误填或误提交可选择原因后撤回修改，无需等待管理员；如有质疑请在下方回复',
       qc_passed: role === 'researcher' ? '质控已通过 —— 请核对数据并签名确认' : '质控已通过 —— 等待研究者签名',
       signed:    '已签名 —— 数据只读，等待管理员锁定；更正须退回草稿并重新审核签名',
       locked:    '已锁定 —— 数据封存，仅总管理员可解锁',
@@ -91,14 +92,52 @@ const QcBar = {
   reopen() {
     this._reopenWithReason('reopen');
   },
+  withdraw() { this._reopenWithReason('withdraw-submission'); },
+  correctionReasons: ['信息填错，需要更正', '选项点错，需要重选', '误点提交，尚未填完', '漏填内容，需要补充'],
   _reopenWithReason(path) {
-    const reason = prompt('请输入更正原因（不含患者个人信息）。操作会退回草稿，原审核和签名不再有效，更正后须重新提交、审核和签名。');
-    if (reason === null) return;
-    if (!reason.trim() || reason.trim().length > 500) {
-      showToast('请填写 1–500 字的更正原因', 'error');
-      return;
-    }
-    this._visitAction(path, '已退回草稿，请更正后重新提交审核', { reason: reason.trim() });
+    const visit = VisitEntry.currentVisit;
+    if (!visit || this._reasonBusy) return;
+    this._reasonTarget = {visitId: visit.id, path};
+    const select = document.getElementById('correction-reason');
+    select.innerHTML = '<option value="">请选择更正原因</option>' + this.correctionReasons.map(r => `<option value="${r}">${r}</option>`).join('') + '<option value="other">其他原因</option>';
+    document.getElementById('correction-detail').value = '';
+    document.getElementById('correction-error').textContent = '';
+    document.getElementById('correction-hint').textContent = path === 'withdraw-submission'
+      ? '选择原因即可撤回草稿，无需管理员批准。修改完成后重新提交审核；已有质疑仍需处理。'
+      : '操作将退回草稿，原审核和签名不再有效，更正后须重新提交、审核和签名。';
+    document.getElementById('correction-submit').textContent = path === 'withdraw-submission' ? '撤回并修改' : '退回草稿';
+    this.changeCorrectionReason();
+    document.getElementById('modal-correction').classList.remove('hidden');
+  },
+  changeCorrectionReason() {
+    document.getElementById('correction-detail-wrap').classList.toggle('hidden', document.getElementById('correction-reason').value !== 'other');
+  },
+  closeCorrection() {
+    if (this._reasonBusy) return;
+    document.getElementById('modal-correction').classList.add('hidden');
+    this._reasonTarget = null;
+  },
+  async submitCorrection() {
+    if (this._reasonBusy || !this._reasonTarget) return;
+    const target = this._reasonTarget;
+    const error = document.getElementById('correction-error');
+    const choice = document.getElementById('correction-reason').value;
+    const reason = choice === 'other' ? document.getElementById('correction-detail').value.trim()
+      : this.correctionReasons.includes(choice) ? choice : '';
+    if (!reason || reason.length > 500) { error.textContent = '请选择快捷原因，或填写其他原因（最多500字）'; return; }
+    if (VisitEntry.currentVisit?.id !== target.visitId) { error.textContent = '当前访视已切换，请关闭窗口后重新操作'; return; }
+    const button = document.getElementById('correction-submit');
+    this._reasonBusy = true;
+    button.disabled = true;
+    error.textContent = '';
+    try {
+      await api('POST', `/api/visits/${target.visitId}/${target.path}`, {reason});
+      document.getElementById('modal-correction').classList.add('hidden');
+      this._reasonTarget = null;
+      showToast('已回到草稿，可直接修改，完成后请重新提交审核', 'success');
+      if (VisitEntry.currentVisit?.id === target.visitId) await VisitEntry.onVisitSelect(target.visitId);
+    } catch (e) { error.textContent = e.message || '操作失败，请重试'; }
+    finally { this._reasonBusy = false; button.disabled = false; }
   },
 
   // ── 质疑：提起 / 答复 / 关闭 ─────────────

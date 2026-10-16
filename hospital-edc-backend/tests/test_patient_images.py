@@ -150,3 +150,56 @@ def test_additive_migration_is_repeatable_and_preserves_old_rows():
             migration.upgrade(); migration.upgrade()
         assert conn.execute(text('SELECT id, study_group, study_subgroup FROM patients')).one() == (1, 'usual_daily', None)
         assert 'patient_images' in inspect(conn).get_table_names()
+
+def test_visit_cost_images_scope_draft_and_empty_cost_submission(client, admin_token):
+    p = create_patient(client, admin_token)
+    other = create_patient(client, admin_token)
+    v = create_visit(client, admin_token, p['id'])
+    v2 = create_visit(client, admin_token, p['id'], 'W26')
+    headers = auth_header(admin_token)
+    url = f"/api/patients/{p['id']}/images?visit_id={v}"
+    r = client.post(url, headers=headers, files={'file': ('cost.png', picture(), 'image/png')})
+    assert r.status_code == 201, r.text
+    assert r.json()['visit_id'] == v
+    assert len(client.get(url, headers=headers).json()['items']) == 1
+    assert client.get(f"/api/patients/{p['id']}/images?visit_id={v2}", headers=headers).json()['items'] == []
+    assert client.post(f"/api/patients/{other['id']}/images?visit_id={v}", headers=headers,
+                       files={'file': ('cost.png', picture(), 'image/png')}).status_code == 404
+    assert client.post(f"/api/visits/{v}/cost-indicators", headers=headers,
+                       json={'crf_version': 1, 'drug_cost': None, 'lab_cost': None, 'service_cost': None, 'supply_cost': None, 'other_cost': None}).status_code == 200
+    assert client.post(f"/api/visits/{v}/submit", headers=headers).status_code == 200
+    assert client.post(url, headers=headers, files={'file': ('cost.png', picture(), 'image/png')}).status_code == 400
+    assert len(client.get(url, headers=headers).json()['items']) == 1
+
+
+def test_age_correction_short_reason_and_audit(client, admin_token, db):
+    p = create_patient(client, admin_token, age=50)
+    v = create_visit(client, admin_token, p['id'])
+    headers = auth_header(admin_token)
+    url = f"/api/patients/{p['id']}"
+    assert client.put(url, headers=headers, json={'age': 51}).status_code == 200
+    assert client.put(url, headers=headers, json={'age': -1}).status_code == 422
+    assert client.post(f"/api/visits/{v}/submit", headers=headers).status_code == 200
+    assert client.put(url, headers=headers, json={'age': 52}).status_code == 400
+    assert client.post(f"/api/visits/{v}/reopen", headers=headers, json={'reason': '年龄录入错误'}).status_code == 200
+    assert client.put(url, headers=headers, json={'age': 52}).json()['age'] == 52
+    assert db.query(AuditLog).filter_by(table_name='patients', record_id=p['id'], field_name='age').count() >= 2
+
+@pytest.mark.parametrize('already_has_column', [False, True])
+def test_visit_photo_migration_preserves_existing_archive(already_has_column):
+    file = Path(__file__).parents[1] / 'alembic/versions/20261016_trial_feedback.py'
+    spec = importlib.util.spec_from_file_location('feedback_migration', file)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    engine = create_engine('sqlite:///:memory:')
+    with engine.begin() as conn:
+        conn.execute(text('CREATE TABLE visits (id INTEGER PRIMARY KEY)'))
+        conn.execute(text('CREATE TABLE patient_images (id INTEGER PRIMARY KEY, storage_key VARCHAR(64))'))
+        if already_has_column:
+            conn.execute(text('ALTER TABLE patient_images ADD COLUMN visit_id INTEGER'))
+        conn.execute(text("INSERT INTO patient_images (id, storage_key) VALUES (1, 'existing.png')"))
+        with Operations.context(MigrationContext.configure(conn)):
+            migration.upgrade()
+            migration.upgrade()
+        assert conn.execute(text('SELECT id, storage_key, visit_id FROM patient_images')).one() == (1, 'existing.png', None)
+        assert inspect(conn).get_foreign_keys('patient_images')[0]['referred_table'] == 'visits'

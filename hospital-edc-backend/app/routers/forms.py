@@ -53,7 +53,7 @@ def _get_unlocked_visit(visit_id: int, db: Session, current_user=None) -> Visit:
         raise HTTPException(403, "需要研究者权限")
     visit = _get_visit_with_access(visit_id, db, current_user, for_update=True)
     if visit.status != "draft":
-        raise HTTPException(400, "仅草稿访视可修改，请由总管理员填写原因并退回草稿后更正")
+        raise HTTPException(400, "仅草稿访视可修改；待审核可选择原因后自行撤回，已审核须由总管理员退回更正")
     return visit
 
 
@@ -166,7 +166,16 @@ def get_medications(visit_id: int, db: Session = Depends(get_db), current_user=D
 
 @router.post("/{visit_id}/medications")
 def save_medications(visit_id: int, data: MedicationBatchIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    _get_unlocked_visit(visit_id, db, current_user)
+    visit = _get_unlocked_visit(visit_id, db, current_user)
+    old_rows = db.query(Medication).filter_by(visit_id=visit_id).order_by(Medication.id).all()
+    fields = list(type(data.medications[0]).model_fields) if data.medications else [c.name for c in Medication.__table__.columns if c.name not in ("id", "visit_id", "created_at")]
+    before = [{k: getattr(row, k) for k in fields} for row in old_rows]
+    after = [row.model_dump() for row in data.medications]
+    old_json = json.dumps(before, ensure_ascii=False, sort_keys=True, default=str)
+    new_json = json.dumps(after, ensure_ascii=False, sort_keys=True, default=str)
+    if old_json != new_json:
+        log_change(db, current_user, "visits", visit_id,
+                   {"medications": (old_json, new_json)}, center_id=visit.patient.center_id)
     db.query(Medication).filter(Medication.visit_id == visit_id).delete()
     for med in data.medications:
         db.add(Medication(visit_id=visit_id, **med.model_dump(exclude_unset=True)))
@@ -185,21 +194,16 @@ def get_questionnaire(visit_id: int, q_type: str, db: Session = Depends(get_db),
 
 @router.post("/{visit_id}/questionnaire")
 def save_questionnaire(visit_id: int, data: QuestionnaireIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    _get_unlocked_visit(visit_id, db, current_user)
+    visit = _get_unlocked_visit(visit_id, db, current_user)
     payload = data.model_dump(exclude_unset=True)
     q_type = data.questionnaire_type
     if q_type == "phq9":
         payload["total_score"] = sum(payload.get(f"q{i}", 0) or 0 for i in range(1, 10))
     elif q_type == "gad7":
         payload["total_score"] = sum(payload.get(f"q{i}", 0) or 0 for i in range(1, 8))
-    obj = db.query(Questionnaire).filter_by(visit_id=visit_id, questionnaire_type=q_type).first()
-    if obj:
-        for k, v in payload.items():
-            setattr(obj, k, v)
-    else:
-        obj = Questionnaire(visit_id=visit_id, **payload)
-        db.add(obj)
-    db.commit()
+    _upsert(db, Questionnaire, {"visit_id": visit_id, "questionnaire_type": q_type},
+            {k: v for k, v in payload.items() if k != "questionnaire_type"}, current_user,
+            audit_center_id=visit.patient.center_id)
     result = {"message": f"{q_type} 保存成功"}
     if q_type == "phq9":
         result["total_score"] = payload["total_score"]
@@ -251,7 +255,16 @@ def get_meal_records(visit_id: int, db: Session = Depends(get_db), current_user=
 
 @router.post("/{visit_id}/meal-records")
 def save_meal_records(visit_id: int, data: MealRecordBatchIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    _get_unlocked_visit(visit_id, db, current_user)
+    visit = _get_unlocked_visit(visit_id, db, current_user)
+    old_rows = db.query(MealRecord).filter_by(visit_id=visit_id).order_by(MealRecord.id).all()
+    fields = list(type(data.records[0]).model_fields) if data.records else [c.name for c in MealRecord.__table__.columns if c.name not in ("id", "visit_id", "created_at")]
+    before = [{k: getattr(row, k) for k in fields} for row in old_rows]
+    after = [row.model_dump() for row in data.records]
+    old_json = json.dumps(before, ensure_ascii=False, sort_keys=True, default=str)
+    new_json = json.dumps(after, ensure_ascii=False, sort_keys=True, default=str)
+    if old_json != new_json:
+        log_change(db, current_user, "visits", visit_id,
+                   {"meal_records": (old_json, new_json)}, center_id=visit.patient.center_id)
     db.query(MealRecord).filter(MealRecord.visit_id == visit_id).delete()
     for rec in data.records:
         db.add(MealRecord(visit_id=visit_id, **rec.model_dump(exclude_unset=True)))

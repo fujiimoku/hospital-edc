@@ -1,0 +1,10 @@
+ARG BASE_IMAGE=edc-backend:prod
+FROM ${BASE_IMAGE}
+WORKDIR /app
+RUN python -c "import PIL, alembic; assert int(PIL.__version__.split(chr(46))[0]) >= 12, '先完成患者图片版本依赖更新'"
+COPY hospital-edc-backend/app /app/app
+COPY hospital-edc-backend/alembic /app/alembic
+COPY hospital-edc-backend/alembic.ini /app/alembic.ini
+COPY hospital-edc-backend/scripts /app/scripts
+COPY hospital-edc-backend/requirements.txt /app/requirements.txt
+COPY hospital-edc-frontend /app/hospital-edc-frontend

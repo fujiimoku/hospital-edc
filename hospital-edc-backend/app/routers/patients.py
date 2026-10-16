@@ -232,12 +232,12 @@ def update_patient(
     if not valid_subgroup(changes.get("study_group", patient.study_group),
                           changes.get("study_subgroup", patient.study_subgroup)):
         raise HTTPException(422, "用药细分组与研究组别不匹配，请同时选择对应的细分组")
-    crf_fields = {"study_group", "study_subgroup", "visit_number", "enrollment_date", "employment_status",
+    crf_fields = {"age", "study_group", "study_subgroup", "visit_number", "enrollment_date", "employment_status",
                   "education_level", "insurance_coverage", "smoking_history", "smoking_per_day",
                   "drinking_history", "drinking_per_day"}
     if any(getattr(patient, k) != changes[k] for k in crf_fields & changes.keys()):
         if db.query(Visit.id).filter(Visit.patient_id == patient_id, Visit.status != "draft").first():
-            raise HTTPException(400, "患者已有提交后的访视，基本信息更正须先由总管理员退回相关访视并留痕")
+            raise HTTPException(400, "患者已有提交后的访视；待审核访视可选择原因后自行撤回，已审核的访视须由总管理员退回相关访视后更正")
     # 敏感字段单独加密处理
     full_name = changes.pop("full_name", None)
     id_card = changes.pop("id_card", None)

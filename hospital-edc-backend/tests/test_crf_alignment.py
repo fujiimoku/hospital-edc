@@ -177,3 +177,19 @@ def test_safety_audit_uses_patient_center_and_draft_delete_has_no_orphan(client,
     assert audit.center_id == seed['c2']
     assert client.delete(f'/api/visits/{vid}', headers=auth_header(admin_token)).status_code == 200
     assert db.query(FollowupSafety).filter_by(visit_id=vid).count() == 0
+
+def test_phq9_symptoms_roundtrip_and_clear(client, admin_token):
+    patient = create_patient(client, admin_token)
+    visit = create_visit(client, admin_token, patient['id'])
+    headers = auth_header(admin_token)
+    url = f'/api/visits/{visit}/questionnaire'
+    answers = {f'q{i}': 3 for i in range(1, 10)}
+    response = client.post(url, headers=headers, json={
+        'questionnaire_type': 'phq9', 'phq9_symptoms': '头晕,失眠,其他', **answers})
+    assert response.status_code == 200
+    assert response.json()['total_score'] == 27
+    saved = client.get(url + '/phq9', headers=headers).json()
+    assert saved['phq9_symptoms'] == '头晕,失眠,其他'
+    assert client.post(url, headers=headers, json={
+        'questionnaire_type': 'phq9', 'phq9_symptoms': None, **answers}).status_code == 200
+    assert client.get(url + '/phq9', headers=headers).json()['phq9_symptoms'] is None

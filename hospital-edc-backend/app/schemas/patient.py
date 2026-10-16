@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, Literal
 from app.study import StudyGroup, StudySubgroup
 from datetime import date, datetime
@@ -14,7 +14,7 @@ class PatientCreate(BaseModel):
     id_card: Optional[str] = None          # 身份证号（明文入参，后端加密存储）
     phone: Optional[str] = None
     gender: str                          # "male" | "female"
-    age: Optional[int] = None
+    age: Optional[int] = Field(default=None, ge=0, le=150)
     visit_number: Optional[str] = None
     center_code: Optional[str] = None     # 仅作展示；实际归属以 center_id/当前用户中心为准
     center_id: Optional[int] = None
@@ -22,7 +22,7 @@ class PatientCreate(BaseModel):
 
     employment_status: Optional[int] = None
     education_level: Optional[int] = None
-    insurance_coverage: Optional[int] = None
+    insurance_coverage: Optional[int] = Field(default=None, ge=0, le=150)
     smoking_status: Optional[int] = None
     smoking_per_day: Optional[int] = None
     drinking_status: Optional[int] = None
@@ -42,14 +42,14 @@ class PatientUpdate(BaseModel):
     id_card: Optional[str] = None
     phone: Optional[str] = None
     gender: Optional[str] = None
-    age: Optional[int] = None
+    age: Optional[int] = Field(default=None, ge=0, le=150)
     visit_number: Optional[str] = None
     marital_status: Optional[int] = None
     center_id: Optional[int] = None
 
     employment_status: Optional[int] = None
     education_level: Optional[int] = None
-    insurance_coverage: Optional[int] = None
+    insurance_coverage: Optional[int] = Field(default=None, ge=0, le=150)
     smoking_status: Optional[int] = None
     smoking_per_day: Optional[int] = None
     drinking_status: Optional[int] = None

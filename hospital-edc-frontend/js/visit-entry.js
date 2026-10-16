@@ -8,12 +8,85 @@ const VisitEntry = {
   // 初始化
   init() {
     this.setupEventListeners();
+    this.setupPageSaveButtons();
     this.initializeQuestions();
     this.loadCurrentPatient();
   },
 
+  setupPageSaveButtons() {
+    document.querySelectorAll('#entry-form-area .tab-panel').forEach(panel => {
+      if (panel.querySelector('[data-page-save]')) return;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.pageSave = '1';
+      button.className = 'mt-4 bg-blue-600 text-white rounded px-4 py-2';
+      button.textContent = '保存草稿并继续填写';
+      button.onclick = () => saveVisitData('draft');
+      panel.appendChild(button);
+    });
+  },
+
+  async loadCostPhotos() {
+    const visitId = this.currentVisit?.id;
+    const patientId = this.currentPatient?.id;
+    if (!visitId || !patientId) return;
+    const box = document.getElementById('cost-photo-list');
+    if (!box) return;
+    box.textContent = '正在加载照片…';
+    try {
+      const result = await api('GET', `/api/patients/${patientId}/images?visit_id=${visitId}`);
+      if (this.currentVisit?.id !== visitId || this.currentPatient?.id !== patientId) return;
+      box.innerHTML = (result.items || []).map(item => `<div>${escapeText(item.filename)} <button type="button" data-photo-download onclick="VisitEntry.downloadCostPhoto(${item.id})" class="text-blue-600">下载照片</button></div>`).join('') || '本次访视尚未上传费用照片';
+    } catch (e) { box.textContent = '照片加载失败：' + e.message; }
+  },
+
+  async uploadCostPhotos() {
+    if (this.currentVisit?.status !== 'draft' || this._uploadingPhotos) return;
+    const input = document.getElementById('cost-photo-files');
+    const files = Array.from(input.files || []);
+    if (!files.length) { showToast('请先选择费用照片', 'error'); return; }
+    const visitId = this.currentVisit.id;
+    const patientId = this.currentPatient.id;
+    this._uploadingPhotos = true;
+    let count = 0;
+    try {
+      for (const file of files) {
+        const form = new FormData();
+        form.append('file', file);
+        const response = await fetch(API_BASE + `/api/patients/${patientId}/images?visit_id=${visitId}`, {
+          method: 'POST', headers: {Authorization: `Bearer ${getToken()}`}, body: form,
+        });
+        if (!response.ok) throw new Error((await response.json()).detail || '上传失败');
+        count++;
+      }
+      if (this.currentVisit?.id === visitId && this.currentPatient?.id === patientId) input.value = '';
+      showToast('费用照片已保存，金额可留空');
+    } catch (e) { showToast(`已上传 ${count} 张；${e.message}`, 'error'); }
+    finally {
+      this._uploadingPhotos = false;
+      if (this.currentVisit?.id === visitId && this.currentPatient?.id === patientId) {
+        document.getElementById('cost-photo-status').textContent = `本次成功上传 ${count} 张照片`;
+        await this.loadCostPhotos();
+      }
+    }
+  },
+
+  async downloadCostPhoto(imageId) {
+    try {
+      const response = await fetch(API_BASE + `/api/patients/${this.currentPatient.id}/images/${imageId}/download`, {headers: {Authorization: `Bearer ${getToken()}`}});
+      if (!response.ok) throw new Error('下载失败');
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = decodeURIComponent(response.headers.get('Content-Disposition')?.split("filename*=utf-8''")[1] || '费用照片');
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) { showToast(e.message, 'error'); }
+  },
+
   // 加载当前患者
-  loadCurrentPatient() {
+  async loadCurrentPatient() {
+    if (this._saveQueue) await this._saveQueue;
     const patientData = sessionStorage.getItem('currentPatient');
     if (patientData) {
       this.currentPatient = JSON.parse(patientData);
@@ -50,6 +123,7 @@ const VisitEntry = {
   // 重置录入页状态（切换患者/未选择患者时，清除上一个患者/访视的残留数据）
   resetEntryState() {
     this.stopAutosave();
+    document.getElementById('cost-photo-list')?.replaceChildren();
     this._supplementaryEnabled = false;
     this.currentVisit = null;
     this.updateVisitStatusBadge();
@@ -78,6 +152,10 @@ const VisitEntry = {
         if (label) label.textContent = el.value;
       });
     });
+    const photoInput = document.getElementById('cost-photo-files');
+    if (photoInput) photoInput.value = '';
+    const photoStatus = document.getElementById('cost-photo-status');
+    if (photoStatus) photoStatus.textContent = '';
     // 药物列表清空
     const medList = document.getElementById('medication-list');
     if (medList) medList.innerHTML = '';
@@ -127,6 +205,7 @@ const VisitEntry = {
 
   // 选择访视后加载数据
   async onVisitSelect(visitId) {
+    if (this._saveQueue) await this._saveQueue;
     if (!visitId) {
       this.currentVisit = null;
       this.stopAutosave();
@@ -146,6 +225,7 @@ const VisitEntry = {
       if (typeof QcBar !== 'undefined') QcBar.refresh();
       this.clearForms();
       await this.loadVisitForms(visitId);
+      await this.loadCostPhotos();
       if (visit.status === 'draft') this.startAutosave();
       this.updateEditability();
       document.getElementById('entry-no-visit-tip').style.display = 'none';
@@ -159,7 +239,7 @@ const VisitEntry = {
   updateEditability() {
     const role = getUser()?.role;
     const editable = this.currentVisit?.status === 'draft' && ['researcher', 'center_admin', 'main_admin'].includes(role);
-    document.querySelectorAll('#entry-form-area input, #entry-form-area select, #entry-form-area textarea, #entry-form-area button:not(.tab-btn)').forEach(el => {
+    document.querySelectorAll('#entry-form-area input, #entry-form-area select, #entry-form-area textarea, #entry-form-area button:not(.tab-btn):not([data-photo-download])').forEach(el => {
       if (!editable && !el.disabled) {
         el.dataset.edcReadOnly = '1';
         el.disabled = true;
@@ -276,7 +356,7 @@ const VisitEntry = {
   },
 
   // Likert 单选组通用渲染（0-3 计分）
-  _renderLikert(containerId, questions, namePrefix, onChange) {
+  _renderLikert(containerId, questions, namePrefix, onChange, options = ['完全不会', '好几天', '超过一周', '几乎每天']) {
     const container = document.getElementById(containerId);
     if (!container) return;
     container.innerHTML = questions.map((q, i) => `
@@ -288,7 +368,7 @@ const VisitEntry = {
               <input type="radio" name="${namePrefix}-q${i}" value="${score}" class="hidden ${namePrefix}-radio" onchange="VisitEntry.${onChange}()"/>
               <div class="border-2 border-gray-200 rounded-lg p-2 text-center text-sm hover:border-blue-400 transition">
                 <div class="font-semibold text-gray-700">${score}</div>
-                <div class="text-xs text-gray-400">${['完全不会', '好几天', '超过一周', '几乎每天'][score]}</div>
+                <div class="text-xs text-gray-400">${options[score]}</div>
               </div>
             </label>
           `).join('')}
@@ -312,16 +392,16 @@ const VisitEntry = {
   initPHQ9() {
     const questions = [
       '做事时提不起劲或没有兴趣',
-      '感到心情低落、沮丧或绝望',
+      '感到心情低落，沮丧或绝望',
       '入睡困难、睡不安稳或睡眠过多',
-      '感觉疲倦或没有活力',
+      '感到疲惫或没有活力',
       '食欲不振或吃太多',
-      '觉得自己很糟糕，或觉得自己很失败，或让自己或家人失望',
-      '对事物专注有困难，例如阅读报纸或看电视时',
-      '动作或说话速度缓慢到别人已经察觉？或正好相反——烦躁或坐立不安、动来动去的情况更胜于平常',
+      '感觉自己很糟，觉得自己很失败或让自己失望',
+      '做事专注有困难，例如阅读报纸和看电视时',
+      '感到说话速度缓慢到别人已察觉？或正好相反，烦躁或坐立不安，动来动去的情况更胜于平常',
       '有不如死掉或用某种方式伤害自己的念头'
     ];
-    this._renderLikert('phq9-questions', questions, 'phq9', 'calculatePHQ9');
+    this._renderLikert('phq9-questions', questions, 'phq9', 'calculatePHQ9', ['完全不会', '好几天', '一半以上的天数', '几乎每天']);
   },
 
   // 计算PHQ-9总分
@@ -336,35 +416,19 @@ const VisitEntry = {
 
     document.getElementById('phq9-score').textContent = total;
 
-    const levelEl = document.getElementById('phq9-level');
-    if (total <= 4) {
-      levelEl.textContent = '无抑郁症状';
-      levelEl.className = 'score-badge bg-green-100 text-green-700';
-    } else if (total <= 9) {
-      levelEl.textContent = '轻度抑郁';
-      levelEl.className = 'score-badge bg-yellow-100 text-yellow-700';
-    } else if (total <= 14) {
-      levelEl.textContent = '中度抑郁';
-      levelEl.className = 'score-badge bg-orange-100 text-orange-700';
-    } else if (total <= 19) {
-      levelEl.textContent = '中重度抑郁';
-      levelEl.className = 'score-badge bg-red-100 text-red-700';
-    } else {
-      levelEl.textContent = '重度抑郁';
-      levelEl.className = 'score-badge bg-red-200 text-red-800';
-    }
+
   },
 
   // 初始化GAD-7问卷
   initGAD7() {
     const questions = [
-      '感觉紧张、焦虑或急切',
-      '不能够停止或控制担忧',
+      '感到紧张、焦虑或急切',
+      '不能停止或控制担忧',
       '对各种各样的事情担忧过多',
       '很难放松下来',
       '由于不安而无法静坐',
-      '变得容易烦恼或急躁',
-      '感到似乎将有可怕的事情发生而害怕'
+      '变得容易急躁',
+      '感到似乎有可怕的事情发生而害怕'
     ];
     this._renderLikert('gad7-questions', questions, 'gad7', 'calculateGAD7');
   },
@@ -381,20 +445,7 @@ const VisitEntry = {
 
     document.getElementById('gad7-score').textContent = total;
 
-    const levelEl = document.getElementById('gad7-level');
-    if (total <= 4) {
-      levelEl.textContent = '无焦虑症状';
-      levelEl.className = 'score-badge bg-green-100 text-green-700';
-    } else if (total <= 9) {
-      levelEl.textContent = '轻度焦虑';
-      levelEl.className = 'score-badge bg-yellow-100 text-yellow-700';
-    } else if (total <= 14) {
-      levelEl.textContent = '中度焦虑';
-      levelEl.className = 'score-badge bg-orange-100 text-orange-700';
-    } else {
-      levelEl.textContent = '重度焦虑';
-      levelEl.className = 'score-badge bg-red-100 text-red-700';
-    }
+
   },
 
   // 初始化EQ-5D-5L
@@ -653,6 +704,21 @@ const VisitEntry = {
       <label class="text-xs text-gray-500">正在进行<select data-med-field="is_ongoing" class="w-full border rounded-lg p-2"><option value="true">是</option><option value="false">否</option></select></label></div>`;
     medDiv.classList.add('medication-row');
     medDiv.querySelector('[data-med-field="is_ongoing"]').value = med.is_ongoing === false ? 'false' : 'true';
+    const suggestions = {
+      treatment_type: ['糖尿病','高血压','降脂','抗血小板','抗凝'],
+      route: ['口服','皮下注射'],
+      frequency: ['必要时','每小时一次','每四小时一次','每六小时一次','每八小时一次','每十二小时一次','每日一次','每日两次','每日三次','隔日一次','每周一次','每周两次','每两周一次','每月一次'],
+    };
+    for (const [key, values] of Object.entries(suggestions)) {
+      const id = 'med-options-' + key;
+      if (!document.getElementById(id)) {
+        const list = document.createElement('datalist');
+        list.id = id;
+        list.innerHTML = values.map(v => `<option value="${v}"></option>`).join('');
+        document.getElementById('tab-medication').appendChild(list);
+      }
+      medDiv.querySelector(`[data-med-field="${key}"]`).setAttribute('list', id);
+    }
     container.appendChild(medDiv);
   },
 
@@ -723,7 +789,11 @@ const VisitEntry = {
 
     // 问卷
     const qs = data.questionnaires || {};
+    this._loadedQuestionnaires = new Set(Object.keys(qs));
     const phq9 = qs.phq9;
+    document.querySelectorAll('[name="phq9-symptoms"]').forEach(el => {
+      el.checked = (phq9?.phq9_symptoms || '').split(',').includes(el.value);
+    });
     if (phq9) {
       for (let i = 0; i < 9; i++) {
         this.setRadio(`phq9-q${i}`, phq9[`q${i + 1}`]);
@@ -867,7 +937,7 @@ const VisitEntry = {
         other_cost: this.getInputValue('cost-other'),
       },
       questionnaires: {
-        phq9: this.collectLikert('phq9-q', 9),
+        phq9: { ...this.collectLikert('phq9-q', 9), phq9_symptoms: Array.from(document.querySelectorAll('[name="phq9-symptoms"]:checked')).map(el => el.value).join(',') || null },
         gad7: this.collectLikert('gad7-q', 7),
         eq5d: this.collectEQ5D(),
         dtsq: this.collectDTSQ(),
@@ -883,7 +953,7 @@ const VisitEntry = {
   comorbidityFields: ['hypertension','ckd','chd','angina','mi','stroke','dr','dn','df'].flatMap(k => [k, k + '_date']).concat(['hypertension_cause','ckd_cause']),
   comorbidityFlags: ['dr_macular','dr_non_proliferative','dr_proliferative','dn_peripheral','dn_autonomic','df_healed_ulcer','df_active_ulcer'],
   safetyFlags: ['symptomatic','nocturnal','severe','gastrointestinal','allergy'],
-  profileFields: ['study_group','study_subgroup','visit_number','enrollment_date','employment_status','education_level','insurance_coverage','smoking_history','smoking_per_day','drinking_history','drinking_per_day'],
+  profileFields: ['age','study_group','study_subgroup','visit_number','enrollment_date','employment_status','education_level','insurance_coverage','smoking_history','smoking_per_day','drinking_history','drinking_per_day'],
   collectComorbidity() {
     const result = {};
     for (const k of this.comorbidityFields) {
@@ -903,7 +973,7 @@ const VisitEntry = {
       }
     }
   },
-  async savePatientProfile() {
+  async savePatientProfile(verbose = true) {
     if (!this.currentPatient || this.currentVisit?.status !== 'draft') return;
     const payload = {};
     for (const k of this.profileFields) {
@@ -911,11 +981,14 @@ const VisitEntry = {
       payload[k] = raw === '' || raw == null ? null : (['study_group','study_subgroup','visit_number','enrollment_date'].includes(k) ? raw.trim() : Number(raw));
     }
     try {
-      this.currentPatient = await api('PUT', `/api/patients/${this.currentPatient.id}`, payload);
+      const changes = Object.fromEntries(Object.entries(payload).filter(([k, v]) => (this.currentPatient[k] ?? null) !== v));
+      if (!Object.keys(changes).length) return true;
+      this.currentPatient = await api('PUT', `/api/patients/${this.currentPatient.id}`, changes);
       sessionStorage.setItem('currentPatient', JSON.stringify(this.currentPatient));
       this.updatePatientInfo();
-      showToast('基本信息已保存');
-    } catch (e) { showToast(e.message, 'error'); }
+      if (verbose) showToast('基本信息已保存');
+      return true;
+    } catch (e) { if (verbose) showToast(e.message, 'error'); return false; }
   },
 
   // 获取输入值
@@ -936,7 +1009,7 @@ const VisitEntry = {
       row.querySelectorAll('[data-med-field]').forEach(el => {
         item[el.dataset.medField] = el.dataset.medField === 'is_ongoing' ? el.value === 'true' : el.value.trim() || null;
       });
-      if (item.drug_name) medications.push(item);
+      if (Object.entries(item).some(([k,v]) => k !== 'is_ongoing' && v != null)) medications.push(item);
     });
 
     return medications;
@@ -1043,10 +1116,22 @@ const VisitEntry = {
   },
 
   // 保存全部表单到后端（各表单独立接口）
-  async saveAllForms(verbose = true) {
+  saveAllForms(verbose = true) {
+    const visitId = this.currentVisit?.id;
+    const run = async () => {
+      if (this.currentVisit?.id !== visitId) return false;
+      return this._saveAllForms(verbose);
+    };
+    this._saveQueue = (this._saveQueue || Promise.resolve()).then(run, run);
+    return this._saveQueue;
+  },
+
+  async _saveAllForms(verbose = true) {
     if (!this.currentVisit || this.currentVisit.status !== 'draft') return false;
     const visitId = this.currentVisit.id;
     const data = this.collectFormData();
+    if (!await this.savePatientProfile(verbose)) return false;
+    if (this.currentVisit?.id !== visitId) return false;
     const allWarnings = [];
     const tasks = [
       ['physical-exam', data.physical_exam],
@@ -1068,15 +1153,15 @@ const VisitEntry = {
     }
     // 问卷：逐类型提交
     for (const qType of ['phq9', 'gad7', 'eq5d', 'dtsq']) {
-      if (['phq9', 'gad7'].includes(qType) && !this._supplementaryEnabled) continue;
       if (qType === 'dtsq' && this._legacyDtsq && !document.getElementById('dtsq-reviewed')?.checked) continue;
       const payload = data.questionnaires[qType];
-      if (Object.entries(payload).some(([k, v]) => k !== 'crf_version' && v !== null && v !== undefined)) {
+      if ((['phq9', 'gad7'].includes(qType) && this._loadedQuestionnaires?.has(qType)) || Object.entries(payload).some(([k, v]) => k !== 'crf_version' && v !== null && v !== undefined)) {
         try {
           await api('POST', `/api/visits/${visitId}/questionnaire`, {
             questionnaire_type: qType,
             ...payload,
           });
+          (this._loadedQuestionnaires ||= new Set()).add(qType);
         } catch (e) {
           if (verbose) showToast(`${qType} 保存失败：${e.message}`, 'error');
           return false;
@@ -1181,10 +1266,11 @@ async function saveVisitData(status) {
       return;
     }
     if (VisitEntry.currentVisit.status !== 'draft') {
-      showToast('该访视只读；更正需由总管理员填写原因并退回草稿', 'error');
+      showToast('该访视只读；待审核可选择原因后撤回修改，已审核须由总管理员退回草稿', 'error');
       return;
     }
 
+    if (VisitEntry._uploadingPhotos) { showToast('请等待费用照片上传完成', 'error'); return; }
     if (status === 'submitted') {
       const errors = VisitEntry.validateForSubmit();
       if (errors.length) {
@@ -1205,7 +1291,7 @@ async function saveVisitData(status) {
       VisitEntry.stopAutosave();
       showToast('✓ 已提交审核');
     } else {
-      showToast('✓ 草稿已保存');
+      showToast('✓ 草稿已保存，可继续填写');
     }
   } catch (error) {
     console.error('保存失败:', error);

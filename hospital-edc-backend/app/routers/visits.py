@@ -236,6 +236,16 @@ def _reopen(db, current_user, visit, reason, action):
     return {"message": "已退回草稿，更正后须重新提交、审核和签名", "visit_id": visit.id, "status": "draft"}
 
 
+@router.post("/{visit_id}/withdraw-submission")
+def withdraw_submission(visit_id: int, data: VisitReopen, db: Session = Depends(get_db),
+                        current_user=Depends(require_researcher)):
+    """录入人员可撤回尚未通过审核的提交；与审核操作共用行锁。"""
+    visit = _get_visit_with_access(visit_id, db, current_user, for_update=True)
+    if visit.status != "submitted":
+        raise HTTPException(400, "仅待审核访视可自行撤回；已通过审核、签名或锁定的访视请联系总管理员退回更正")
+    return _reopen(db, current_user, visit, data.reason, "withdraw_submission")
+
+
 @router.post("/{visit_id}/reopen")
 def reopen_visit(visit_id: int, data: VisitReopen, db: Session = Depends(get_db),
                  current_user=Depends(require_main_admin)):

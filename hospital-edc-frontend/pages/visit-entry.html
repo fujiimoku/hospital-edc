@@ -32,6 +32,7 @@
         <button id="qc-btn-sign" onclick="QcBar.sign()" class="hidden bg-green-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-green-700 transition">签名确认</button>
         <button id="qc-btn-lock" onclick="QcBar.lock()" class="hidden bg-gray-800 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-gray-900 transition">锁定访视</button>
         <button id="qc-btn-unlock" onclick="QcBar.unlock()" class="hidden bg-red-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-red-700 transition">解锁（总管理员）</button>
+        <button id="qc-btn-withdraw" onclick="QcBar.withdraw()" class="hidden bg-orange-600 text-white text-sm px-4 py-1.5 rounded-lg">撤回并修改</button>
         <button id="qc-btn-reopen" onclick="QcBar.reopen()" class="hidden bg-red-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-red-700 transition">退回更正（总管理员）</button>
       </div>
     </div>
@@ -61,8 +62,8 @@
       <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" onclick="switchEntryTab('medication')">用药记录</button>
       <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" onclick="switchEntryTab('cost')">费用指标</button>
       <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" data-followup-safety-tab onclick="switchEntryTab('safety')">不良反应</button>
-      <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" data-supplementary="true" style="display:none" onclick="VisitEntry._supplementaryEnabled=true; switchEntryTab('phq9')">PHQ-9</button>
-      <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" data-supplementary="true" style="display:none" onclick="VisitEntry._supplementaryEnabled=true; switchEntryTab('gad7')">GAD-7</button>
+      <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" onclick="switchEntryTab('phq9')">抑郁量表 PHQ-9</button>
+      <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" onclick="switchEntryTab('gad7')">焦虑量表 GAD-7</button>
       <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" onclick="switchEntryTab('eq5d')">EQ-5D</button>
       <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" onclick="switchEntryTab('dtsq')">DTSQ</button>
       <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" data-supplementary="true" style="display:none" onclick="VisitEntry._supplementaryEnabled=true; switchEntryTab('diet')">饮食评估</button>
@@ -75,9 +76,9 @@
   <!-- Tab内容区 -->
   <div class="bg-white border border-gray-200 rounded-xl p-6">
     <div id="tab-basic" class="tab-panel hidden"><h3 class="font-semibold mb-3">患者基本信息</h3>
-      <p class="text-xs text-gray-500 mb-3">患者编号、姓名、性别、年龄和中心见患者建档信息；下列信息单独保存，组别按实际分配结果填写。</p>
-      <div class="grid grid-cols-3 gap-4"><div><label class="text-xs text-gray-500">就诊号</label><input id="bp-visit_number" type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/></div><div><label class="text-xs text-gray-500">入组日期</label><input id="bp-enrollment_date" type="date" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/></div><div><label class="text-xs text-gray-500">研究组别</label><select id="bp-study_group" onchange="fillStudySubgroups(this.value, 'bp-study_subgroup')" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="">未分组／待确认</option><option value="integrated_weekly">A组：三一照护+周制剂</option><option value="integrated_daily">B组：三一照护+每日注射</option><option value="usual_weekly">C组：常规诊疗+周制剂</option><option value="usual_daily">D组：常规诊疗+周制剂</option></select><label class="text-xs text-gray-500 block mt-2">用药细分组</label><select id="bp-study_subgroup" class="w-full border rounded-lg p-2"><option value="">待确认</option></select></div><div><label class="text-xs text-gray-500">工作状态</label><select id="bp-employment_status" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="1">在职</option><option value="2">无工作者</option><option value="3">退休</option></select></div><div><label class="text-xs text-gray-500">教育程度</label><select id="bp-education_level" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="1">文盲</option><option value="2">小学（1–6年）</option><option value="3">中学（7–13年）</option><option value="4">大学／高等教育（>13年）</option></select></div><div><label class="text-xs text-gray-500">医疗保障</label><select id="bp-insurance_coverage" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="1">无</option><option value="2">个人商业保险</option><option value="3">社会医疗保险</option><option value="4">均有</option></select></div><div><label class="text-xs text-gray-500">吸烟史</label><select id="bp-smoking_history" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="1">从不</option><option value="2">目前／曾经吸烟</option></select></div><div><label class="text-xs text-gray-500">吸烟数量（支/天）</label><input id="bp-smoking_per_day" type="number" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/></div><div><label class="text-xs text-gray-500">饮酒史</label><select id="bp-drinking_history" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="1">从不</option><option value="2">目前／曾经饮酒</option></select></div><div><label class="text-xs text-gray-500">饮酒量（克/天）</label><input id="bp-drinking_per_day" type="number" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/></div></div>
-      <button onclick="VisitEntry.savePatientProfile()" class="mt-4 bg-blue-600 text-white rounded px-4 py-2">保存基本信息</button>
+      <p class="text-xs text-gray-500 mb-3">年龄填写错误可在下方更正并保存；待审核的访视可先撤回修改，已审核的访视须由总管理员退回更正。组别按实际分配结果填写。</p>
+      <div class="grid grid-cols-3 gap-4"><div><label class="text-xs text-gray-500">年龄（岁）</label><input id="bp-age" type="number" min="0" max="150" step="1" class="w-full border rounded-lg px-3 py-2"/></div><div><label class="text-xs text-gray-500">就诊号</label><input id="bp-visit_number" type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/></div><div><label class="text-xs text-gray-500">入组日期</label><input id="bp-enrollment_date" type="date" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/></div><div><label class="text-xs text-gray-500">研究组别</label><select id="bp-study_group" onchange="fillStudySubgroups(this.value, 'bp-study_subgroup')" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="">未分组／待确认</option><option value="integrated_weekly">A组：三一照护+周制剂</option><option value="integrated_daily">B组：三一照护+每日注射</option><option value="usual_weekly">C组：常规诊疗+周制剂</option><option value="usual_daily">D组：常规诊疗+周制剂</option></select><label class="text-xs text-gray-500 block mt-2">用药细分组</label><select id="bp-study_subgroup" class="w-full border rounded-lg p-2"><option value="">待确认</option></select></div><div><label class="text-xs text-gray-500">工作状态</label><select id="bp-employment_status" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="1">在职</option><option value="2">无工作者</option><option value="3">退休</option></select></div><div><label class="text-xs text-gray-500">教育程度</label><select id="bp-education_level" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="1">文盲</option><option value="2">小学（1–6年）</option><option value="3">中学（7–13年）</option><option value="4">大学／高等教育（>13年）</option></select></div><div><label class="text-xs text-gray-500">医疗保障</label><select id="bp-insurance_coverage" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="1">无</option><option value="2">个人商业保险</option><option value="3">社会医疗保险</option><option value="4">均有</option></select></div><div><label class="text-xs text-gray-500">吸烟史</label><select id="bp-smoking_history" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="1">从不</option><option value="2">目前／曾经吸烟</option></select></div><div><label class="text-xs text-gray-500">吸烟数量（支/天）</label><input id="bp-smoking_per_day" type="number" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/></div><div><label class="text-xs text-gray-500">饮酒史</label><select id="bp-drinking_history" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="1">从不</option><option value="2">目前／曾经饮酒</option></select></div><div><label class="text-xs text-gray-500">饮酒量（克/天）</label><input id="bp-drinking_per_day" type="number" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/></div></div>
+
     </div>
     <!-- 体格检查 -->
     <div id="tab-physical" class="tab-panel">
@@ -192,7 +193,7 @@
     <div id="tab-medication" class="tab-panel hidden">
       <div class="flex items-center justify-between mb-4">
         <div class="text-sm font-semibold text-gray-700">当前用药列表</div>
-        <button onclick="addMedication()" class="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-700 flex items-center gap-1">
+        <button type="button" onclick="VisitEntry.addMedication()" class="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-700 flex items-center gap-1">
           <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
           添加药物
         </button>
@@ -204,6 +205,14 @@
 
     <!-- 费用指标 -->
     <div id="tab-cost" class="tab-panel hidden">
+      <div class="border rounded-lg p-4 mb-4">
+        <h3 class="font-semibold">本次访视费用照片</h3>
+        <p class="text-sm text-gray-500 my-2">上传成功后，下方费用金额可留空。照片仅保存归档，暂不进行 OCR 识别。支持 JPG、PNG、WebP，每张最多 15MB。</p>
+        <input id="cost-photo-files" type="file" accept="image/jpeg,image/png,image/webp" multiple/>
+        <button type="button" onclick="VisitEntry.uploadCostPhotos()" class="bg-blue-600 text-white rounded px-4 py-2 mt-2">上传费用照片</button>
+        <div id="cost-photo-status" role="status" class="text-sm my-2"></div>
+        <div id="cost-photo-list" class="text-sm space-y-2"></div>
+      </div>
       <div class="form-section">
         <div class="text-sm font-semibold text-gray-700 mb-4">糖尿病相关费用（本次就诊）</div>
         <div class="grid grid-cols-2 gap-4">
@@ -236,8 +245,11 @@
 <div id="tab-safety" class="tab-panel hidden"><h3 class="font-semibold mb-3">不良反应记录（V2/V3及中间采集）</h3><p class="text-xs text-gray-500 mb-4">本表为随访汇总，不替代不良事件详情登记。</p><div><label class="text-xs text-gray-500">低血糖</label><select id="safety-hypoglycemia" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="1">1. 无</option><option value="2">2. 有</option></select></div><div class="flex flex-wrap gap-4 mt-4"><label><input type="checkbox" id="safety-symptomatic"/> 症状性低血糖</label><label><input type="checkbox" id="safety-nocturnal"/> 夜间低血糖</label><label><input type="checkbox" id="safety-severe"/> 严重低血糖</label><label><input type="checkbox" id="safety-gastrointestinal"/> 胃肠道不适</label><label><input type="checkbox" id="safety-allergy"/> 过敏</label></div><div><label class="text-xs text-gray-500">其他不良反应</label><input id="safety-other" type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/></div></div>
     <!-- PHQ-9问卷 -->
     <div id="tab-phq9" class="tab-panel hidden">
+      <h3 class="font-semibold mb-3">PHQ-9 9条目健康调查表</h3>
+      <fieldset class="mb-4"><legend class="text-sm mb-2">您就诊的主要症状（可多选）</legend>
+      <div class="flex flex-wrap gap-4"><label><input type="checkbox" name="phq9-symptoms" value="头晕"/> 头晕</label><label><input type="checkbox" name="phq9-symptoms" value="头疼"/> 头疼</label><label><input type="checkbox" name="phq9-symptoms" value="失眠"/> 失眠</label><label><input type="checkbox" name="phq9-symptoms" value="脑血管疾病"/> 脑血管疾病</label><label><input type="checkbox" name="phq9-symptoms" value="心慌"/> 心慌</label><label><input type="checkbox" name="phq9-symptoms" value="胸闷"/> 胸闷</label><label><input type="checkbox" name="phq9-symptoms" value="胸痛"/> 胸痛</label><label><input type="checkbox" name="phq9-symptoms" value="其他"/> 其他</label></div></fieldset>
       <div class="text-xs text-blue-500 bg-blue-50 px-4 py-2 rounded-lg mb-4">
-        过去两周内，以下问题出现的频率（0=完全不会，1=好几天，2=超过一周，3=几乎每天）
+        过去两周状况，请您回顾是否存在下列描述的事发概率，请看清楚问题后在符合的选项前打√（0=完全不会，1=好几天，2=一半以上的天数，3=几乎每天）
       </div>
       <div id="phq9-questions" class="space-y-3">
         <!-- PHQ-9问题将动态生成 -->
@@ -246,14 +258,14 @@
         <div class="text-sm text-gray-600">PHQ-9 总分</div>
         <div class="text-3xl font-bold text-blue-600" id="phq9-score">0</div>
         <div class="text-sm text-gray-400">/ 27</div>
-        <div id="phq9-level" class="score-badge bg-green-100 text-green-700">无抑郁症状</div>
       </div>
     </div>
 
     <!-- GAD-7问卷 -->
     <div id="tab-gad7" class="tab-panel hidden">
+      <h3 class="font-semibold mb-3">GAD-7 广泛性焦虑障碍量表</h3>
       <div class="text-xs text-blue-500 bg-blue-50 px-4 py-2 rounded-lg mb-4">
-        过去两周内，以下问题出现的频率（0=完全不会，1=好几天，2=超过一周，3=几乎每天）
+        根据过去两周的状况，请您回答是否存在下面的状况或频率，请在符合您选项的频率中打勾√。在过去两星期，有多少时候您受到以下任何问题困扰？（0=完全不会，1=好几天，2=超过一周，3=几乎每天）
       </div>
       <div id="gad7-questions" class="space-y-3">
         <!-- GAD-7问题将动态生成 -->
@@ -262,7 +274,6 @@
         <div class="text-sm text-gray-600">GAD-7 总分</div>
         <div class="text-3xl font-bold text-blue-600" id="gad7-score">0</div>
         <div class="text-sm text-gray-400">/ 21</div>
-        <div id="gad7-level" class="score-badge bg-green-100 text-green-700">无焦虑症状</div>
       </div>
     </div>
 
@@ -386,7 +397,7 @@
   <!-- 操作按钮 -->
   <div class="flex gap-3 mt-4">
     <button onclick="saveVisitData('draft')" class="bg-gray-100 text-gray-700 text-sm px-6 py-2 rounded-lg hover:bg-gray-200 transition">
-      保存草稿
+      保存全部草稿（继续填写）
     </button>
     <button onclick="saveVisitData('submitted')" class="bg-blue-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-blue-700 transition">
       提交审核
@@ -459,6 +470,24 @@
         <button id="rq-submit-btn" onclick="QcBar.raiseQuery()" class="flex-1 bg-orange-500 text-white text-sm py-2 rounded-lg hover:bg-orange-600">提交质疑</button>
         <button onclick="QcBar.closeRaiseModal()" class="flex-1 border border-gray-200 text-gray-600 text-sm py-2 rounded-lg hover:bg-gray-50">取消</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<div id="modal-correction" role="dialog" aria-modal="true" aria-labelledby="correction-title" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+  <div class="bg-white rounded-xl p-6 w-full max-w-lg shadow-xl">
+    <h3 id="correction-title" class="font-semibold text-lg mb-3">选择更正原因</h3>
+    <p id="correction-hint" class="text-sm text-gray-600 mb-4"></p>
+    <label for="correction-reason" class="text-sm">快捷原因（必选）</label>
+    <select id="correction-reason" onchange="QcBar.changeCorrectionReason()" class="w-full border rounded-lg p-2 mt-2"></select>
+    <div id="correction-detail-wrap" class="hidden mt-3">
+      <label for="correction-detail" class="text-sm">其他原因（一句话即可，不含患者个人信息）</label>
+      <textarea id="correction-detail" maxlength="500" rows="3" class="w-full border rounded-lg p-2 mt-2"></textarea>
+    </div>
+    <p id="correction-error" role="alert" class="text-sm text-red-600 my-3"></p>
+    <div class="flex justify-end gap-3">
+      <button type="button" onclick="QcBar.closeCorrection()" class="border rounded-lg px-4 py-2">取消</button>
+      <button id="correction-submit" type="button" onclick="QcBar.submitCorrection()" class="bg-blue-600 text-white rounded-lg px-4 py-2">确认</button>
     </div>
   </div>
 </div>

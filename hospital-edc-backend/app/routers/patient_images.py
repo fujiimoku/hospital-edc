@@ -1,4 +1,4 @@
-"""Patient-bound source images. No OCR, public file URLs, or replacement of CRF costs."""
+"""Patient-bound source images. No OCR, public file URLs, or automatic extraction of CRF costs."""
 import hashlib
 import io
 import re
@@ -18,6 +18,7 @@ from app.config import settings
 from app.database import get_db
 from app.dependencies import require_researcher, get_accessible_center_ids
 from app.models.patient import Patient
+from app.models.visit import Visit
 from app.models.patient_image import PatientImage
 from app.services.audit import log_change
 from app.study import GROUP_LETTERS
@@ -38,6 +39,16 @@ def get_patient(patient_id, db, user):
     if centers is not None and patient.center_id not in centers:
         raise HTTPException(403, "无权访问该患者的图片")
     return patient
+
+
+def get_image_visit(visit_id, patient_id, db, for_update=False):
+    query = db.query(Visit).filter_by(id=visit_id, patient_id=patient_id)
+    if for_update:
+        query = query.with_for_update()
+    visit = query.first()
+    if visit is None:
+        raise HTTPException(404, "该患者没有此访视")
+    return visit
 
 
 def image_path(item):
@@ -62,7 +73,7 @@ def filename(patient, item=None):
 
 def describe(patient, item):
     return {"id": item.id, "patient_id": patient.id, "filename": filename(patient, item),
-            "size_bytes": item.size_bytes, "created_at": item.created_at}
+            "visit_id": item.visit_id, "size_bytes": item.size_bytes, "created_at": item.created_at}
 
 
 def audit(db, user, patient, image_id, action):
@@ -71,16 +82,24 @@ def audit(db, user, patient, image_id, action):
 
 
 @router.get("")
-def list_images(patient_id: int, db: Session = Depends(get_db), user=Depends(require_researcher)):
+def list_images(patient_id: int, visit_id: int | None = None, db: Session = Depends(get_db), user=Depends(require_researcher)):
     patient = get_patient(patient_id, db, user)
-    items = db.query(PatientImage).filter_by(patient_id=patient.id).order_by(PatientImage.id).all()
+    query = db.query(PatientImage).filter_by(patient_id=patient.id)
+    if visit_id is not None:
+        get_image_visit(visit_id, patient.id, db)
+        query = query.filter_by(visit_id=visit_id)
+    items = query.order_by(PatientImage.id).all()
     return {"items": [describe(patient, i) for i in items], "archive_filename": filename(patient)}
 
 
 @router.post("", status_code=201)
-def upload_image(patient_id: int, file: UploadFile = File(...),
+def upload_image(patient_id: int, visit_id: int | None = None, file: UploadFile = File(...),
                  db: Session = Depends(get_db), user=Depends(require_researcher)):
     patient = get_patient(patient_id, db, user)
+    if visit_id is not None:
+        visit = get_image_visit(visit_id, patient.id, db, for_update=True)
+        if visit.status != "draft":
+            raise HTTPException(400, "仅草稿访视可上传费用照片，请先退回更正")
     content = file.file.read(MAX_BYTES + 1)
     if len(content) > MAX_BYTES:
         raise HTTPException(413, "每张图片不能超过15MB")
@@ -101,7 +120,7 @@ def upload_image(patient_id: int, file: UploadFile = File(...),
     root.mkdir(parents=True, exist_ok=True)
     key = uuid4().hex + suffix
     path = root / key
-    item = PatientImage(patient_id=patient.id, storage_key=key, media_type=media_type,
+    item = PatientImage(patient_id=patient.id, visit_id=visit_id, storage_key=key, media_type=media_type,
                         size_bytes=len(content), sha256=hashlib.sha256(content).hexdigest(), uploaded_by=user.id)
     try:
         with path.open('xb') as output:

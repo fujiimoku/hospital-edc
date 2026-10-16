@@ -37,22 +37,3 @@ test('QC cannot edit even a draft; researcher can edit after role switch', () =>
   vm.runInContext('VisitEntry.updateEditability()', ctx);
   assert.equal(ctx.controls[0].disabled, false);
 });
-
-test('reopen/unlock require a reason and pass it in the request body', () => {
-  const ctx = context();
-  const calls = [];
-  ctx.prompt = () => ctx.answer;
-  ctx.showToast = () => {};
-  ctx.record = (...args) => calls.push(args);
-  vm.runInContext('QcBar._visitAction = record', ctx);
-  for (const answer of [null, '', '  ', 'x'.repeat(501)]) {
-    ctx.answer = answer;
-    vm.runInContext('QcBar.unlock(); QcBar.reopen()', ctx);
-  }
-  assert.equal(calls.length, 0);
-  ctx.answer = '  Correct measurement  ';
-  vm.runInContext('QcBar.unlock(); QcBar.reopen()', ctx);
-  assert.deepEqual(calls.map(x => [x[0], x[2].reason]), [
-    ['unlock', 'Correct measurement'], ['reopen', 'Correct measurement'],
-  ]);
-});

@@ -7,6 +7,7 @@ class PatientImage(Base):
     __tablename__ = "patient_images"
     id = Column(Integer, primary_key=True)
     patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
+    visit_id = Column(Integer, ForeignKey("visits.id"), nullable=True, index=True)
     storage_key = Column(String(64), nullable=False, unique=True)
     media_type = Column(String(32), nullable=False)
     size_bytes = Column(Integer, nullable=False)
