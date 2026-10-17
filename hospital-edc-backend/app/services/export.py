@@ -323,6 +323,7 @@ def build_data_dictionary() -> pd.DataFrame:
                          ("angina", "心绞痛"), ("mi", "心肌梗死"), ("stroke", "脑卒中"),
                          ("dr", "糖尿病视网膜病变"), ("dn", "糖尿病神经病变"), ("df", "糖尿病足")]:
         add("访视宽表", var, f"{meaning}（0=无 1=有）", "整数", "0/1")
+    add("访视宽表", "other_conditions", "其他病情或补充说明", "字符串")
     add("访视宽表", "drug_cost", "药品费", "小数", unit="元")
     add("访视宽表", "lab_cost", "检查化验费", "小数", unit="元")
     add("访视宽表", "service_cost", "诊疗服务费", "小数", unit="元")

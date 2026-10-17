@@ -84,6 +84,7 @@ class Comorbidity(Base):
     df_date = Column(String(20))
     df_healed_ulcer = Column(Boolean, default=False)
     df_active_ulcer = Column(Boolean, default=False)
+    other_conditions = Column(Text, nullable=True)
 
     visit = relationship("Visit", back_populates="comorbidities")
 

@@ -139,6 +139,8 @@ const VisitEntry = {
 
   // 清空所有表单字段（避免残留上一个访视/患者已填的数据）
   clearForms() {
+    this._legacyComorbidityFlags = {};
+    document.getElementById('cm-legacy-details')?.classList.add('hidden');
     const area = document.getElementById('entry-form-area');
     if (!area) return;
     area.querySelectorAll('input[type="text"], input[type="number"], input[type="date"], select, textarea').forEach(el => { el.value = ''; });
@@ -755,9 +757,14 @@ const VisitEntry = {
     }
 
     const cm = data.comorbidity;
+    this._legacyComorbidityFlags = Object.fromEntries(this.comorbidityFlags.map(k => [k, cm?.[k] ?? false]));
+    const legacyNames = ['黄斑病变','非增殖性','增殖性','周围神经病变','自主神经病变','既往愈合溃疡','活动性溃疡'];
+    const selectedLegacy = this.comorbidityFlags.flatMap((k,i) => cm?.[k] ? [legacyNames[i]] : []);
+    document.getElementById('cm-legacy-details')?.classList.toggle('hidden', !selectedLegacy.length);
+    const legacySummary = document.getElementById('cm-legacy-summary');
+    if (legacySummary) legacySummary.textContent = selectedLegacy.join('、');
     if (cm) {
       for (const field of this.comorbidityFields) this.setInputValue('cm-' + field, cm[field]);
-      for (const field of this.comorbidityFlags) this.setChecked('cm-' + field, cm[field]);
     }
     const safety = data.followup_safety;
     if (safety) {
@@ -950,7 +957,7 @@ const VisitEntry = {
     };
   },
 
-  comorbidityFields: ['hypertension','ckd','chd','angina','mi','stroke','dr','dn','df'].flatMap(k => [k, k + '_date']).concat(['hypertension_cause','ckd_cause']),
+  comorbidityFields: ['hypertension','ckd','chd','angina','mi','stroke','dr','dn','df'].flatMap(k => [k, k + '_date']).concat(['hypertension_cause','ckd_cause','other_conditions']),
   comorbidityFlags: ['dr_macular','dr_non_proliferative','dr_proliferative','dn_peripheral','dn_autonomic','df_healed_ulcer','df_active_ulcer'],
   safetyFlags: ['symptomatic','nocturnal','severe','gastrointestinal','allergy'],
   profileFields: ['age','study_group','study_subgroup','visit_number','enrollment_date','employment_status','education_level','insurance_coverage','smoking_history','smoking_per_day','drinking_history','drinking_per_day'],
@@ -960,7 +967,8 @@ const VisitEntry = {
       const value = document.getElementById('cm-' + k)?.value;
       result[k] = value === '' || value == null ? null : (k.includes('_') ? value.trim() : Number(value));
     }
-    for (const k of this.comorbidityFlags) result[k] = document.getElementById('cm-' + k)?.checked || false;
+    // Retain legacy structured flags; the new free-text field does not erase them.
+    for (const k of this.comorbidityFlags) result[k] = this._legacyComorbidityFlags?.[k] ?? false;
     return result;
   },
   fillPatientProfile() {

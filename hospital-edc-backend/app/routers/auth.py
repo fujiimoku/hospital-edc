@@ -102,13 +102,16 @@ def register_with_invitation_code(
     code_record = db.query(InvitationCode).filter(
         InvitationCode.code == invitation_code,
         InvitationCode.is_active == True
-    ).first()
+    ).with_for_update().first()
 
     if not code_record:
         raise HTTPException(status_code=400, detail="邀请码无效")
 
     if code_record.role not in ("researcher", "qc", "center_admin"):
         raise HTTPException(status_code=403, detail="邀请码角色无效")
+
+    if not db.query(Center).filter_by(id=code_record.center_id, is_active=True).first():
+        raise HTTPException(status_code=400, detail="邀请码所属中心未启用")
 
     # 检查邀请码是否过期
     if code_record.expires_at and code_record.expires_at < datetime.utcnow():

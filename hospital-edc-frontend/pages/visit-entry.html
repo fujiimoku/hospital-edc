@@ -62,10 +62,10 @@
       <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" onclick="switchEntryTab('medication')">用药记录</button>
       <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" onclick="switchEntryTab('cost')">费用指标</button>
       <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" data-followup-safety-tab onclick="switchEntryTab('safety')">不良反应</button>
+      <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" onclick="switchEntryTab('eq5d')">生命质量 EQ-5D</button>
+      <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" onclick="switchEntryTab('dtsq')">DTSQ</button>
       <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" onclick="switchEntryTab('phq9')">抑郁量表 PHQ-9</button>
       <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" onclick="switchEntryTab('gad7')">焦虑量表 GAD-7</button>
-      <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" onclick="switchEntryTab('eq5d')">EQ-5D</button>
-      <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" onclick="switchEntryTab('dtsq')">DTSQ</button>
       <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" data-supplementary="true" style="display:none" onclick="VisitEntry._supplementaryEnabled=true; switchEntryTab('diet')">饮食评估</button>
       <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" data-supplementary="true" style="display:none" onclick="VisitEntry._supplementaryEnabled=true; switchEntryTab('exercise')">运动评估</button>
       <button class="tab-btn px-5 py-3 text-sm whitespace-nowrap" data-supplementary="true" style="display:none" onclick="VisitEntry._supplementaryEnabled=true; switchEntryTab('meal')">膳食调查</button>
@@ -188,7 +188,70 @@
       <div class="grid grid-cols-3 gap-4 mt-4"><div><label class="text-xs text-gray-500">eGFR</label><input id="lab-egfr" type="number" step="any" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/></div><div><label class="text-xs text-gray-500">尿酸（μmol/L）</label><input id="lab-ua" type="number" step="any" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/></div></div>
     </div>
 
-<div id="tab-comorbidity" class="tab-panel hidden"><p class="text-xs text-gray-500 mb-4">原表 1=无、2=有；空白表示未填写。诊断日期可填写已知的年或年月。</p><div class="grid grid-cols-3 gap-4"><div><label class="text-xs text-gray-500">高血压</label><select id="cm-hypertension" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="0">1. 无</option><option value="1">2. 有</option></select></div><div><label class="text-xs text-gray-500">诊断时间（年/月/日）</label><input id="cm-hypertension_date" type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/></div><div><label class="text-xs text-gray-500">诊断病因</label><input id="cm-hypertension_cause" type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/></div><div><label class="text-xs text-gray-500">慢性肾脏病</label><select id="cm-ckd" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="0">1. 无</option><option value="1">2. 有</option></select></div><div><label class="text-xs text-gray-500">诊断时间（年/月/日）</label><input id="cm-ckd_date" type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/></div><div><label class="text-xs text-gray-500">诊断病因</label><input id="cm-ckd_cause" type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/></div><div><label class="text-xs text-gray-500">冠心病</label><select id="cm-chd" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="0">1. 无</option><option value="1">2. 有</option></select></div><div><label class="text-xs text-gray-500">诊断时间（年/月/日）</label><input id="cm-chd_date" type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/></div><div><label class="text-xs text-gray-500">心绞痛</label><select id="cm-angina" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="0">1. 无</option><option value="1">2. 有</option></select></div><div><label class="text-xs text-gray-500">诊断时间（年/月/日）</label><input id="cm-angina_date" type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/></div><div><label class="text-xs text-gray-500">心肌梗死</label><select id="cm-mi" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="0">1. 无</option><option value="1">2. 有</option></select></div><div><label class="text-xs text-gray-500">诊断时间（年/月/日）</label><input id="cm-mi_date" type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/></div><div><label class="text-xs text-gray-500">脑卒中</label><select id="cm-stroke" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="0">1. 无</option><option value="1">2. 有</option></select></div><div><label class="text-xs text-gray-500">诊断时间（年/月/日）</label><input id="cm-stroke_date" type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/></div><div><label class="text-xs text-gray-500">糖尿病视网膜病变</label><select id="cm-dr" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="0">1. 无</option><option value="1">2. 有</option></select></div><div><label class="text-xs text-gray-500">诊断时间（年/月/日）</label><input id="cm-dr_date" type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/></div><div><label class="text-xs text-gray-500">糖尿病神经病变</label><select id="cm-dn" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="0">1. 无</option><option value="1">2. 有</option></select></div><div><label class="text-xs text-gray-500">诊断时间（年/月/日）</label><input id="cm-dn_date" type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/></div><div><label class="text-xs text-gray-500">糖尿病足</label><select id="cm-df" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="0">1. 无</option><option value="1">2. 有</option></select></div><div><label class="text-xs text-gray-500">诊断时间（年/月/日）</label><input id="cm-df_date" type="text" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/></div></div><div class="flex flex-wrap gap-4 mt-4"><label><input type="checkbox" id="cm-dr_macular"/> 黄斑病变</label><label><input type="checkbox" id="cm-dr_non_proliferative"/> 非增殖性</label><label><input type="checkbox" id="cm-dr_proliferative"/> 增殖性</label><label><input type="checkbox" id="cm-dn_peripheral"/> 周围神经病变</label><label><input type="checkbox" id="cm-dn_autonomic"/> 自主神经病变</label><label><input type="checkbox" id="cm-df_healed_ulcer"/> 既往愈合溃疡</label><label><input type="checkbox" id="cm-df_active_ulcer"/> 活动性溃疡</label></div></div>
+<div id="tab-comorbidity" class="tab-panel hidden">
+      <p class="text-xs text-gray-500 mb-4">按病情分别填写；未填写与“无”不同。诊断时间可填写已知的年、年月或完整日期。</p>
+      <div class="space-y-4">
+<fieldset data-disease="hypertension" class="border border-gray-200 rounded-lg p-4">
+        <legend class="font-semibold text-gray-700 px-2">高血压</legend>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div><label for="cm-hypertension" class="text-xs text-gray-500">是否患有高血压</label><select id="cm-hypertension" class="w-full border rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="0">1. 无</option><option value="1">2. 有</option></select></div>
+          <div><label for="cm-hypertension_date" class="text-xs text-gray-500">诊断时间（年/月/日）</label><input id="cm-hypertension_date" type="text" placeholder="如 2020、2020/02 或 2020/02/15" class="w-full border rounded-lg px-3 py-2 text-sm"/></div>
+<div><label for="cm-hypertension_cause" class="text-xs text-gray-500">诊断病因</label><input id="cm-hypertension_cause" type="text" class="w-full border rounded-lg px-3 py-2 text-sm"/></div>
+</div></fieldset>
+<fieldset data-disease="ckd" class="border border-gray-200 rounded-lg p-4">
+        <legend class="font-semibold text-gray-700 px-2">慢性肾脏病</legend>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div><label for="cm-ckd" class="text-xs text-gray-500">是否患有慢性肾脏病</label><select id="cm-ckd" class="w-full border rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="0">1. 无</option><option value="1">2. 有</option></select></div>
+          <div><label for="cm-ckd_date" class="text-xs text-gray-500">诊断时间（年/月/日）</label><input id="cm-ckd_date" type="text" placeholder="如 2020、2020/02 或 2020/02/15" class="w-full border rounded-lg px-3 py-2 text-sm"/></div>
+<div><label for="cm-ckd_cause" class="text-xs text-gray-500">诊断病因</label><input id="cm-ckd_cause" type="text" class="w-full border rounded-lg px-3 py-2 text-sm"/></div>
+</div></fieldset>
+<fieldset data-disease="chd" class="border border-gray-200 rounded-lg p-4">
+        <legend class="font-semibold text-gray-700 px-2">冠心病</legend>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div><label for="cm-chd" class="text-xs text-gray-500">是否患有冠心病</label><select id="cm-chd" class="w-full border rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="0">1. 无</option><option value="1">2. 有</option></select></div>
+          <div><label for="cm-chd_date" class="text-xs text-gray-500">诊断时间（年/月/日）</label><input id="cm-chd_date" type="text" placeholder="如 2020、2020/02 或 2020/02/15" class="w-full border rounded-lg px-3 py-2 text-sm"/></div>
+</div></fieldset>
+<fieldset data-disease="angina" class="border border-gray-200 rounded-lg p-4">
+        <legend class="font-semibold text-gray-700 px-2">心绞痛</legend>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div><label for="cm-angina" class="text-xs text-gray-500">是否患有心绞痛</label><select id="cm-angina" class="w-full border rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="0">1. 无</option><option value="1">2. 有</option></select></div>
+          <div><label for="cm-angina_date" class="text-xs text-gray-500">诊断时间（年/月/日）</label><input id="cm-angina_date" type="text" placeholder="如 2020、2020/02 或 2020/02/15" class="w-full border rounded-lg px-3 py-2 text-sm"/></div>
+</div></fieldset>
+<fieldset data-disease="mi" class="border border-gray-200 rounded-lg p-4">
+        <legend class="font-semibold text-gray-700 px-2">心肌梗死</legend>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div><label for="cm-mi" class="text-xs text-gray-500">是否患有心肌梗死</label><select id="cm-mi" class="w-full border rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="0">1. 无</option><option value="1">2. 有</option></select></div>
+          <div><label for="cm-mi_date" class="text-xs text-gray-500">诊断时间（年/月/日）</label><input id="cm-mi_date" type="text" placeholder="如 2020、2020/02 或 2020/02/15" class="w-full border rounded-lg px-3 py-2 text-sm"/></div>
+</div></fieldset>
+<fieldset data-disease="stroke" class="border border-gray-200 rounded-lg p-4">
+        <legend class="font-semibold text-gray-700 px-2">脑卒中</legend>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div><label for="cm-stroke" class="text-xs text-gray-500">是否患有脑卒中</label><select id="cm-stroke" class="w-full border rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="0">1. 无</option><option value="1">2. 有</option></select></div>
+          <div><label for="cm-stroke_date" class="text-xs text-gray-500">诊断时间（年/月/日）</label><input id="cm-stroke_date" type="text" placeholder="如 2020、2020/02 或 2020/02/15" class="w-full border rounded-lg px-3 py-2 text-sm"/></div>
+</div></fieldset>
+<fieldset data-disease="dr" class="border border-gray-200 rounded-lg p-4">
+        <legend class="font-semibold text-gray-700 px-2">糖尿病视网膜病变</legend>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div><label for="cm-dr" class="text-xs text-gray-500">是否患有糖尿病视网膜病变</label><select id="cm-dr" class="w-full border rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="0">1. 无</option><option value="1">2. 有</option></select></div>
+          <div><label for="cm-dr_date" class="text-xs text-gray-500">诊断时间（年/月/日）</label><input id="cm-dr_date" type="text" placeholder="如 2020、2020/02 或 2020/02/15" class="w-full border rounded-lg px-3 py-2 text-sm"/></div>
+</div></fieldset>
+<fieldset data-disease="dn" class="border border-gray-200 rounded-lg p-4">
+        <legend class="font-semibold text-gray-700 px-2">糖尿病神经病变</legend>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div><label for="cm-dn" class="text-xs text-gray-500">是否患有糖尿病神经病变</label><select id="cm-dn" class="w-full border rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="0">1. 无</option><option value="1">2. 有</option></select></div>
+          <div><label for="cm-dn_date" class="text-xs text-gray-500">诊断时间（年/月/日）</label><input id="cm-dn_date" type="text" placeholder="如 2020、2020/02 或 2020/02/15" class="w-full border rounded-lg px-3 py-2 text-sm"/></div>
+</div></fieldset>
+<fieldset data-disease="df" class="border border-gray-200 rounded-lg p-4">
+        <legend class="font-semibold text-gray-700 px-2">糖尿病足</legend>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div><label for="cm-df" class="text-xs text-gray-500">是否患有糖尿病足</label><select id="cm-df" class="w-full border rounded-lg px-3 py-2 text-sm"><option value="">未填写</option><option value="0">1. 无</option><option value="1">2. 有</option></select></div>
+          <div><label for="cm-df_date" class="text-xs text-gray-500">诊断时间（年/月/日）</label><input id="cm-df_date" type="text" placeholder="如 2020、2020/02 或 2020/02/15" class="w-full border rounded-lg px-3 py-2 text-sm"/></div>
+</div></fieldset>
+</div>
+      <div class="mt-4"><label for="cm-other_conditions" class="text-sm font-semibold">其他：</label><textarea id="cm-other_conditions" rows="3" maxlength="2000" placeholder="由医院自主填写其他病情或补充说明" class="w-full border rounded-lg px-3 py-2 mt-2 text-sm"></textarea></div>
+      <details id="cm-legacy-details" class="hidden mt-4 text-sm text-gray-500"><summary>查看历史细分记录（保留原数据）</summary><p id="cm-legacy-summary" class="mt-2"></p></details>
+    </div>
+
     <!-- 用药记录 -->
     <div id="tab-medication" class="tab-panel hidden">
       <div class="flex items-center justify-between mb-4">

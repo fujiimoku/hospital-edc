@@ -59,6 +59,8 @@ def create_invitation_code(
     center = db.query(Center).filter(Center.id == data.center_id).first()
     if not center:
         raise HTTPException(404, "中心不存在")
+    if not center.is_active:
+        raise HTTPException(400, "中心未启用")
 
     # 生成唯一邀请码
     code = secrets.token_urlsafe(16)
@@ -125,6 +127,9 @@ def validate_invitation_code(
 
     # 获取中心信息
     center = db.query(Center).filter(Center.id == code_record.center_id).first()
+
+    if not center or not center.is_active:
+        return {"valid": False, "message": "邀请码所属中心未启用"}
 
     return {
         "valid": True,

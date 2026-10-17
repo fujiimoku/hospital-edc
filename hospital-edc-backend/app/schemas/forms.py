@@ -33,6 +33,7 @@ class LabResultsIn(BaseModel):
 
 # ---- 合并症 ----
 class ComorbidityIn(BaseModel):
+    other_conditions: Optional[str] = Field(default=None, max_length=2000)
     hypertension: Optional[Literal[0, 1]] = None
     hypertension_date: Optional[str] = None
     hypertension_cause: Optional[str] = None

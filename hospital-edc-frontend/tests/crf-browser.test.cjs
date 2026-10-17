@@ -307,3 +307,25 @@ test('correction shortcuts, custom reason, role/state boundaries and stale targe
   assert.equal(await page.locator('#modal-correction').isVisible(), true);
   assert.equal(await page.evaluate(() => VisitEntry.currentVisit.status), 'submitted');
 });
+
+test('disease groups and questionnaire order preserve other text and historical flags', async t => {
+  const page = await entryPage(t);
+  assert.equal(await page.locator('#tab-comorbidity fieldset[data-disease]').count(), 9);
+  for (const key of ['hypertension','ckd','chd','angina','mi','stroke','dr','dn','df']) {
+    const group = page.locator(`[data-disease="${key}"]`);
+    assert.equal(await group.locator(`#cm-${key}`).count(), 1);
+    assert.equal(await group.locator(`#cm-${key}_date`).count(), 1);
+  }
+  const tabs = await page.locator('.tab-btn').evaluateAll(nodes => nodes.map(n => n.getAttribute('onclick').match(/switchEntryTab\('([^']+)'\)/)?.[1]));
+  assert.deepEqual(tabs.filter(x => ['eq5d','dtsq','phq9','gad7'].includes(x)), ['eq5d','dtsq','phq9','gad7']);
+  const data = await page.evaluate(() => {
+    VisitEntry.fillForms({comorbidity: {dr_macular: true, other_conditions: '其他病情'}});
+    return VisitEntry.collectFormData().comorbidity;
+  });
+  assert.equal(data.other_conditions, '其他病情');
+  assert.equal(data.dr_macular, true);
+  assert.equal(await page.locator('#tab-comorbidity input[type=checkbox]').count(), 0);
+  await page.evaluate(() => { VisitEntry.clearForms(); VisitEntry.fillForms({}); });
+  assert.equal(await page.locator('#cm-other_conditions').inputValue(), '');
+  assert.equal(await page.evaluate(() => VisitEntry.collectFormData().comorbidity.dr_macular), false);
+});
