@@ -43,6 +43,8 @@ def list_patients(
     limit: int = 20,
     search: Optional[str] = Query(None, description="按患者编号或姓名首字母搜索"),
     status: Optional[str] = Query(None, description="enrolled | completed | dropout | withdrawn"),
+    center_id: Optional[int] = Query(None),
+    sort: str = Query('newest', pattern='^(newest|center|patient_code)$'),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -78,6 +80,10 @@ def list_patients(
     # 根据用户权限过滤中心
     if accessible_centers is not None:
         query = query.filter(Patient.center_id.in_(accessible_centers))
+        if center_id is not None and center_id not in accessible_centers:
+            raise HTTPException(403, '无权查看该中心患者')
+    if center_id is not None:
+        query = query.filter(Patient.center_id == center_id)
 
     if search:
         query = query.filter(
@@ -87,7 +93,11 @@ def list_patients(
     if status:
         query = query.filter(Patient.status == status)
     total = query.count()
-    rows = query.order_by(Patient.id.desc()).offset(skip).limit(limit).all()
+    ordering = [Patient.id.desc()] if sort == 'newest' else [Patient.center_code, Patient.id]
+    if sort == 'patient_code':
+        ordering = [Patient.patient_code, Patient.id]
+    rows = query.order_by(*ordering).offset(skip).limit(limit).all()
+    center_names = dict(db.query(Center.id, Center.center_name).filter(Center.id.in_({r[0].center_id for r in rows})).all())
     items = []
     for p, has_submitted, has_consent, latest_visit_status in rows:
         _apply_privacy(p, current_user)
@@ -95,6 +105,7 @@ def list_patients(
         d["has_submitted"] = bool(has_submitted)
         d["has_consent"] = bool(has_consent)
         d["latest_visit_status"] = latest_visit_status
+        d['center_name'] = center_names.get(p.center_id, '')
         items.append(d)
     return {"total": total, "items": items}
 

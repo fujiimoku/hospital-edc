@@ -36,9 +36,9 @@
       </div>
       <div id="export-center-wrap" style="display:none;">
         <label class="text-xs font-medium text-gray-600 block mb-1.5">中心范围（仅总中心可选）</label>
-        <select id="export-center" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="">全部中心</option>
-        </select>
+        <label class="block text-sm mb-2"><input id="export-all-centers" type="checkbox" checked onchange="ExportPage.toggleCenters()"> 全部中心</label>
+        <div id="export-center" class="border rounded-lg p-3 space-y-2 max-h-48 overflow-auto">正在加载中心…</div>
+        <p class="text-xs text-gray-500 mt-2">取消“全部中心”后，可勾选一家或多家医院。</p>
       </div>
     </div>
 

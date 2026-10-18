@@ -20,6 +20,7 @@ def export_data(
     status: Optional[List[str]] = Query(None, description="入组状态过滤：enrolled/completed/dropout/withdrawn"),
     visit_status: Optional[str] = Query(None, description="访视状态过滤：locked/signed/…（默认不过滤）"),
     center_id: Optional[int] = Query(None, description="限定中心（总中心可用）"),
+    selected_centers: Optional[List[int]] = Query(None, description="选择一个或多个中心"),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -38,13 +39,16 @@ def export_data(
 
     # 中心隔离
     center_ids = get_accessible_center_ids(current_user)
+    requested = set(selected_centers or [])
+    if center_id is not None:
+        requested.add(center_id)
     if center_ids is not None:
         # 分中心：只能本中心
-        if center_id is not None and center_id not in center_ids:
+        if requested - set(center_ids):
             raise HTTPException(403, "无权导出该中心的数据")
-    elif center_id is not None:
+    elif requested:
         # 总中心指定了中心
-        center_ids = [center_id]
+        center_ids = sorted(requested)
 
     visit_statuses = [visit_status] if visit_status else None
 

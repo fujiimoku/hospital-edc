@@ -49,7 +49,7 @@ const RecordedPage = {
           <td class="px-4 py-3 text-sm">${p.age ?? '—'}</td>
           <td class="px-4 py-3 text-sm">${enroll}</td>
           <td class="px-4 py-3 text-sm">${st}</td>
-          <td class="px-4 py-3"><button onclick="RecordedPage.selectPatient(${p.id})" class="text-blue-600 text-xs hover:underline">管理/修改</button></td>
+          <td class="px-4 py-3"><button onclick="RecordedPage.selectPatient(${p.id})" class="text-blue-600 text-xs hover:underline">查看／录入</button></td>
         </tr>`;
       }).join('');
     } catch (e) {

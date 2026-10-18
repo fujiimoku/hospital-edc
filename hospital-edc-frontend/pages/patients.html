@@ -2,7 +2,9 @@
 <div class="bg-white rounded-xl border border-gray-100 shadow-sm">
   <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
     <span id="patient-list-title" class="font-semibold text-gray-700">患者列表</span>
-    <div class="flex gap-3 items-center">
+    <div class="flex gap-3 items-center flex-wrap">
+      <select id="patient-center" aria-label="所属中心" style="display:none" onchange="loadPatients()" class="border rounded-lg p-2 text-sm"><option value="">全部中心</option></select>
+      <select id="patient-sort" aria-label="排序" onchange="loadPatients()" class="border rounded-lg p-2 text-sm"><option value="center">按中心编号排序</option><option value="newest">最新创建在前</option><option value="patient_code">按患者编号排序</option></select>
       <input id="patient-search" type="text" placeholder="搜索患者编号/首字母…" class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-52 focus:outline-none focus:border-blue-400" oninput="onPatientSearch(this.value)"/>
       <button onclick="openCreatePatientModal()" class="bg-blue-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-blue-700 transition">+ 创建患者</button>
     </div>
@@ -22,6 +24,7 @@
       <tr><td colspan="9" class="px-5 py-6 text-center text-gray-400 text-sm">加载中…</td></tr>
     </tbody>
   </table>
+  <div class="p-3 flex gap-4"><button id="patient-prev" onclick="loadPatients(undefined, Math.max(0, patientOffset - 50))">上一页</button><button id="patient-next" onclick="loadPatients(undefined, patientOffset + 50)">下一页</button></div>
   <div id="patient-list-footer" class="px-5 py-3 text-xs text-gray-400 border-t border-gray-100">—</div>
 </div>
 

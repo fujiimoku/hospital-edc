@@ -4,6 +4,8 @@ const VisitEntry = {
   currentVisit: null,
   currentPatient: null,
   _autosaveTimer: null,
+  _patientGeneration: 0,
+  _visitGeneration: 0,
 
   // 初始化
   init() {
@@ -86,7 +88,10 @@ const VisitEntry = {
 
   // 加载当前患者
   async loadCurrentPatient() {
+    const generation = ++this._patientGeneration;
+    this.stopAutosave();
     if (this._saveQueue) await this._saveQueue;
+    if (generation !== this._patientGeneration) return;
     const patientData = sessionStorage.getItem('currentPatient');
     if (patientData) {
       this.currentPatient = JSON.parse(patientData);
@@ -99,7 +104,7 @@ const VisitEntry = {
       const codeEl = document.getElementById('entry-patient-code');
       const infoEl = document.getElementById('entry-patient-info');
       if (codeEl) codeEl.textContent = '未选择';
-      if (infoEl) infoEl.textContent = '请先在【患者管理】选择患者';
+      if (infoEl) infoEl.textContent = '请在患者管理点击患者编号或“查看／录入”';
     }
   },
 
@@ -122,6 +127,7 @@ const VisitEntry = {
 
   // 重置录入页状态（切换患者/未选择患者时，清除上一个患者/访视的残留数据）
   resetEntryState() {
+    ++this._visitGeneration;
     this.stopAutosave();
     document.getElementById('cost-photo-list')?.replaceChildren();
     this._supplementaryEnabled = false;
@@ -181,8 +187,11 @@ const VisitEntry = {
     // 先清除上一个患者/访视的残留状态（停掉自动保存，防止把新患者的数据写进旧草稿）
     this.resetEntryState();
 
+    const patient = this.currentPatient;
+    const generation = this._patientGeneration;
     try {
       const visits = await api('GET', `/api/patients/${this.currentPatient.id}/visits`);
+      if (this.currentPatient !== patient || generation !== this._patientGeneration) return;
       select.innerHTML = '<option value="">选择访视…</option>' + visits.map(v => {
         const typeLabel = { baseline: 'V1 基线', W12: 'V2 第12周', W26: 'V3 第26周', interim: '中间采集', M6: '历史6月', M12: '历史12月', M18: '历史18月', M24: '历史24月' }[v.visit_type] || v.visit_type;
         const statusLabel = { draft: '草稿', submitted: '待审核', qc_passed: '质控通过', signed: '已签名', locked: '已锁定' }[v.status] || v.status;
@@ -207,7 +216,13 @@ const VisitEntry = {
 
   // 选择访视后加载数据
   async onVisitSelect(visitId) {
+    const generation = ++this._visitGeneration;
+    const patient = this.currentPatient;
+    this.stopAutosave();
     if (this._saveQueue) await this._saveQueue;
+    if (generation !== this._visitGeneration || patient !== this.currentPatient) return;
+    this.currentVisit = null;
+    document.getElementById('entry-form-area').style.display = 'none';
     if (!visitId) {
       this.currentVisit = null;
       this.stopAutosave();
@@ -217,6 +232,7 @@ const VisitEntry = {
     try {
       this.stopAutosave();
       const visit = await api('GET', `/api/visits/${visitId}`);
+      if (generation !== this._visitGeneration || patient !== this.currentPatient) return;
       this.currentVisit = visit;
       document.querySelector('[data-followup-safety-tab]')?.classList.toggle('hidden', visit.visit_type === 'baseline');
       if (visit.visit_type === 'baseline' && !document.getElementById('tab-safety')?.classList.contains('hidden')) {
@@ -226,8 +242,10 @@ const VisitEntry = {
       this.updateVisitStatusBadge();
       if (typeof QcBar !== 'undefined') QcBar.refresh();
       this.clearForms();
-      await this.loadVisitForms(visitId);
+      await this.loadVisitForms(visitId, generation);
+      if (generation !== this._visitGeneration) return;
       await this.loadCostPhotos();
+      if (generation !== this._visitGeneration) return;
       if (visit.status === 'draft') this.startAutosave();
       this.updateEditability();
       document.getElementById('entry-no-visit-tip').style.display = 'none';
@@ -269,9 +287,10 @@ const VisitEntry = {
   },
 
   // 加载已有表单数据并回填
-  async loadVisitForms(visitId) {
+  async loadVisitForms(visitId, generation = this._visitGeneration) {
     try {
       const data = await api('GET', `/api/visits/${visitId}/all-forms`);
+      if (generation !== this._visitGeneration || this.currentVisit?.id !== Number(visitId)) return;
       this.fillForms(data);
     } catch (e) {
       console.error('加载表单数据失败:', e);
@@ -706,21 +725,37 @@ const VisitEntry = {
       <label class="text-xs text-gray-500">正在进行<select data-med-field="is_ongoing" class="w-full border rounded-lg p-2"><option value="true">是</option><option value="false">否</option></select></label></div>`;
     medDiv.classList.add('medication-row');
     medDiv.querySelector('[data-med-field="is_ongoing"]').value = med.is_ongoing === false ? 'false' : 'true';
-    const suggestions = {
+    // Native selects open on click; custom and historical values remain editable.
+    const choices = {
       treatment_type: ['糖尿病','高血压','降脂','抗血小板','抗凝'],
       route: ['口服','皮下注射'],
-      frequency: ['必要时','每小时一次','每四小时一次','每六小时一次','每八小时一次','每十二小时一次','每日一次','每日两次','每日三次','隔日一次','每周一次','每周两次','每两周一次','每月一次'],
     };
-    for (const [key, values] of Object.entries(suggestions)) {
-      const id = 'med-options-' + key;
-      if (!document.getElementById(id)) {
-        const list = document.createElement('datalist');
-        list.id = id;
-        list.innerHTML = values.map(v => `<option value="${v}"></option>`).join('');
-        document.getElementById('tab-medication').appendChild(list);
-      }
-      medDiv.querySelector(`[data-med-field="${key}"]`).setAttribute('list', id);
+    for (const [key, values] of Object.entries(choices)) {
+      const input = medDiv.querySelector(`[data-med-field="${key}"]`);
+      const select = document.createElement('select');
+      select.dataset.medField = key;
+      select.className = input.className;
+      select.innerHTML = '<option value="">请选择</option>' + values.map(v => `<option value="${v}">${v}</option>`).join('') + '<option value="__other__">其他（请填写）</option>';
+      const custom = document.createElement('input');
+      custom.type = 'text';
+      custom.dataset.medOther = key;
+      custom.className = input.className + ' mt-2';
+      custom.placeholder = '请输入其他' + (key === 'route' ? '给药途径' : '治疗类型');
+      const value = med[key] || '';
+      select.value = value && !values.includes(value) ? '__other__' : value;
+      custom.value = select.value === '__other__' ? value : '';
+      custom.hidden = select.value !== '__other__';
+      select.onchange = () => { custom.hidden = select.value !== '__other__'; };
+      input.replaceWith(select);
+      select.after(custom);
     }
+    if (!document.getElementById('med-options-frequency')) {
+      const list = document.createElement('datalist');
+      list.id = 'med-options-frequency';
+      list.innerHTML = ['必要时','每小时一次','每四小时一次','每六小时一次','每八小时一次','每十二小时一次','每日一次','每日两次','每日三次','隔日一次','每周一次','每周两次','每两周一次','每月一次'].map(v => `<option value="${v}"></option>`).join('');
+      document.getElementById('tab-medication').appendChild(list);
+    }
+    medDiv.querySelector('[data-med-field="frequency"]').setAttribute('list', 'med-options-frequency');
     container.appendChild(medDiv);
   },
 
@@ -1017,6 +1052,9 @@ const VisitEntry = {
       row.querySelectorAll('[data-med-field]').forEach(el => {
         item[el.dataset.medField] = el.dataset.medField === 'is_ongoing' ? el.value === 'true' : el.value.trim() || null;
       });
+      for (const key of ['route', 'treatment_type']) {
+        if (item[key] === '__other__') item[key] = row.querySelector(`[data-med-other="${key}"]`).value.trim() || null;
+      }
       if (Object.entries(item).some(([k,v]) => k !== 'is_ongoing' && v != null)) medications.push(item);
     });
 
@@ -1184,7 +1222,7 @@ const VisitEntry = {
 // 显示新建访视模态框
 function showNewVisitModal() {
   if (!VisitEntry.currentPatient) {
-    showToast('请先在【患者管理】选择患者', 'error');
+    showToast('请在患者管理点击患者编号或“查看／录入”', 'error');
     return;
   }
   document.getElementById('modal-new-visit').classList.remove('hidden');
@@ -1268,6 +1306,9 @@ function switchEntryTab(tabName) {
 
 // 保存访视数据（draft=存草稿；submitted=保存并提交审核）
 async function saveVisitData(status) {
+  if (VisitEntry._savingVisit) return;
+  VisitEntry._savingVisit = true;
+  const targetVisit = VisitEntry.currentVisit;
   try {
     if (!VisitEntry.currentVisit) {
       showToast('请先创建或选择访视', 'error');
@@ -1289,22 +1330,42 @@ async function saveVisitData(status) {
 
     const ok = await VisitEntry.saveAllForms(true);
     if (!ok) return;
+    if (VisitEntry.currentVisit !== targetVisit) return;
 
     if (status === 'submitted') {
-      await api('POST', `/api/visits/${VisitEntry.currentVisit.id}/submit`);
-      VisitEntry.currentVisit.status = 'submitted';
+      await api('POST', `/api/visits/${targetVisit.id}/submit`);
+      targetVisit.status = 'submitted';
+      if (VisitEntry.currentVisit !== targetVisit) return;
       VisitEntry.updateEditability();
       VisitEntry.updateVisitStatusBadge();
       if (typeof QcBar !== 'undefined') QcBar.refresh();
       VisitEntry.stopAutosave();
       showToast('✓ 已提交审核');
+      showSubmissionSuccess();
     } else {
       showToast('✓ 草稿已保存，可继续填写');
     }
   } catch (error) {
     console.error('保存失败:', error);
     showToast('保存失败：' + error.message, 'error');
+  } finally {
+    VisitEntry._savingVisit = false;
   }
+}
+
+function showSubmissionSuccess() {
+  document.getElementById('submission-success')?.remove();
+  const dialog = document.createElement('dialog');
+  dialog.id = 'submission-success';
+  dialog.className = 'rounded-xl p-6 max-w-md w-full shadow-xl';
+  dialog.setAttribute('aria-labelledby', 'submission-success-title');
+  dialog.innerHTML = `<h2 id="submission-success-title" class="text-xl font-semibold text-green-700">提交成功</h2>
+    <p class="my-4">本次访视已提交审核。您可以从患者管理的“查看／录入”再次进入，查看审核状态或新建访视。待审核时如需更正，可选择原因后撤回修改。</p>
+    <button type="button" autofocus class="bg-blue-600 text-white rounded-lg px-5 py-2">知道了</button>`;
+  dialog.querySelector('button').onclick = () => dialog.close();
+  dialog.addEventListener('close', () => dialog.remove(), {once: true});
+  document.body.appendChild(dialog);
+  dialog.showModal();
 }
 
 // 页面加载时初始化

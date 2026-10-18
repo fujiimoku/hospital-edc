@@ -329,3 +329,151 @@ test('disease groups and questionnaire order preserve other text and historical 
   assert.equal(await page.locator('#cm-other_conditions').inputValue(), '');
   assert.equal(await page.evaluate(() => VisitEntry.collectFormData().comorbidity.dr_macular), false);
 });
+
+test('submission success dialog appears only after success; duplicate clicks submit once', async t => {
+  const page = await entryPage(t);
+  await page.evaluate(async () => {
+    VisitEntry.validateForSubmit = () => [];
+    VisitEntry.saveAllForms = async () => true;
+    await Promise.all([saveVisitData('submitted'), saveVisitData('submitted')]);
+  });
+  await page.locator('#submission-success').waitFor({state:'visible'});
+  assert.equal(await page.evaluate(() => sent.filter(x => x.url.endsWith('/submit')).length), 1);
+  await page.getByRole('button', {name:'知道了'}).click();
+  await page.locator('#submission-success').waitFor({state:'detached'});
+  assert.equal(await page.locator('#submission-success').count(), 0);
+  await page.evaluate(async () => {
+    VisitEntry.currentVisit.status = 'draft';
+    window.api = async () => {throw new Error('提交失败');};
+    await saveVisitData('submitted');
+  });
+  assert.equal(await page.locator('#submission-success').count(), 0);
+  assert.equal(await page.evaluate(() => VisitEntry.currentVisit.status), 'draft');
+});
+
+test('medication selects retain custom routes and switch to standard choices', async t => {
+  const page = await entryPage(t);
+  await page.evaluate(() => { document.getElementById('tab-medication').classList.remove('hidden'); VisitEntry.addMedication({route:'历史特殊途径', treatment_type:'其他治疗'}); });
+  assert.equal(await page.locator('select[data-med-field="route"]').inputValue(), '__other__');
+  assert.equal(await page.evaluate(() => VisitEntry.collectMedications()[0].route), '历史特殊途径');
+  await page.locator('select[data-med-field="route"]').selectOption('口服');
+  await page.locator('select[data-med-field="treatment_type"]').selectOption('高血压');
+  assert.equal(await page.evaluate(() => VisitEntry.collectMedications()[0].route), '口服');
+  assert.equal(await page.evaluate(() => VisitEntry.collectMedications()[0].treatment_type), '高血压');
+});
+
+test('submitted patients can enter from management via number or action', async t => {
+  const page = await entryPage(t);
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML('beforeend','<table><tbody id="patient-table"></tbody></table><div id="patient-list-footer"></div><div id="patient-list-title"></div>');
+    window.getUser = () => ({role:'researcher'});
+    window.showPage = name => { window.lastPage = name; };
+  });
+  await page.addScriptTag({path:path.join(root,'js/patients.js')});
+  await page.evaluate(() => renderPatientTable([{id:33, patient_code:'TEST33', gender:'female', has_submitted:true, status:'active'}],1));
+  const action = page.getByRole('button',{name:'查看／录入',exact:true});
+  assert.equal(await action.isEnabled(), true);
+  await action.click();
+  assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem('currentPatient')).id),33);
+  assert.equal(await page.evaluate(() => lastPage),'entry');
+  await page.getByRole('button',{name:'TEST33',exact:true}).click();
+  assert.equal(await page.evaluate(() => lastPage),'entry');
+});
+
+test('stale patient visit lists cannot replace the selected patient', async t => {
+  const page = await entryPage(t);
+  const result = await page.evaluate(async () => {
+    let resolveOld;
+    window.api = async (method, url) => url.includes('/patients/1/') ? await new Promise(resolve => {resolveOld=resolve;}) : [];
+    VisitEntry.onVisitSelect = async id => {window.selectedVisit=id;};
+    VisitEntry.currentPatient = {id:1};
+    const old = VisitEntry.loadPatientVisits();
+    VisitEntry.currentPatient = {id:2};
+    await VisitEntry.loadPatientVisits();
+    resolveOld([{id:11,status:'draft',visit_type:'baseline',visit_date:'2026-10-18'}]);
+    await old;
+    return {selected:window.selectedVisit, options:document.getElementById('entry-visit-select').textContent};
+  });
+  assert.equal(result.selected, undefined);
+  assert.ok(!result.options.includes('2026-10-18'));
+});
+
+test('old visit form responses never overwrite the newly selected visit', async t => {
+  const page = await entryPage(t);
+  const value = await page.evaluate(async () => {
+    let resolveOld;
+    window.api = async () => await new Promise(resolve => {resolveOld=resolve;});
+    VisitEntry.currentVisit = {id:1,status:'draft'};
+    const pending = VisitEntry.loadVisitForms(1);
+    VisitEntry._visitGeneration++;
+    VisitEntry.currentVisit = {id:2,status:'draft'};
+    document.getElementById('pe-height').value='170';
+    resolveOld({physical_exam:{height_cm:99}});
+    await pending;
+    return document.getElementById('pe-height').value;
+  });
+  assert.equal(value,'170');
+});
+
+test('main-center export supports multiple centers and rejects empty selection', async t => {
+  const page = await entryPage(t);
+  await page.evaluate(html => {document.body.insertAdjacentHTML('beforeend',html); window.getUser=()=>({role:'main_admin'});}, fs.readFileSync(path.join(root,'pages/export.html'),'utf8'));
+  await page.addScriptTag({path:path.join(root,'js/export.js')});
+  const result = await page.evaluate(async () => {
+    window.api=async()=>({items:[{id:2,center_code:'TJ02',center_name:'二院',is_active:true},{id:3,center_code:'TJ03',center_name:'三院',is_active:true}]});
+    await ExportPage.init();
+    document.getElementById('export-all-centers').checked=false;
+    ExportPage.toggleCenters();
+    let error='';try { ExportPage.buildQuery(); } catch(e) {error=e.message;}
+    document.querySelectorAll('[data-export-center]').forEach(e=>e.checked=true);
+    const query=ExportPage.buildQuery();
+    window.getUser=()=>({role:'researcher'});
+    return {error, query, branch:ExportPage.buildQuery()};
+  });
+  assert.match(result.error,/至少/);
+  assert.deepEqual(new URLSearchParams(result.query).getAll('selected_centers'),['2','3']);
+  assert.equal(new URLSearchParams(result.branch).has('selected_centers'),false);
+});
+
+test('account login and logout rebuild the document and discard selected patient', async t => {
+  const page = await entryPage(t);
+  await page.addScriptTag({path:path.join(root,'js/auth.js')});
+  await page.evaluate(() => {
+    sessionStorage.setItem('edc_token','new-center-token');
+    sessionStorage.setItem('edc_user', JSON.stringify({id:2,role:'researcher',center_id:2}));
+    sessionStorage.setItem('currentPatient',JSON.stringify({id:1}));
+    sessionStorage.setItem('pendingVisitId','1');
+    document.body.insertAdjacentHTML('beforeend','<p id="old-center-data">旧中心患者</p>');
+  });
+  await Promise.all([page.waitForEvent('load'),page.evaluate(() => onLoginSuccess({id:2}))]);
+  assert.equal(await page.locator('#old-center-data').count(),0);
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('currentPatient')),null);
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('pendingVisitId')),null);
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('edc_token')),'new-center-token');
+  await page.addScriptTag({path:path.join(root,'js/config.js')});
+  await page.addScriptTag({path:path.join(root,'js/auth.js')});
+  await Promise.all([page.waitForEvent('load'),page.evaluate(() => doLogout())]);
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('edc_token')),null);
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('edc_user')),null);
+});
+
+test('new patient opens directly even when current list filters exclude it', async t => {
+  const page = await entryPage(t);
+  await page.evaluate(html => document.body.insertAdjacentHTML('beforeend',html), fs.readFileSync(path.join(root,'pages/patients.html'),'utf8'));
+  await page.addScriptTag({path:path.join(root,'js/patients.js')});
+  const result = await page.evaluate(async () => {
+    window.showPage = name => {window.targetPage=name;};
+    document.getElementById('cp-initials').value='NEW';
+    document.getElementById('cp-gender').value='male';
+    document.getElementById('patient-search').value='older patient';
+    window.api=async(method,url)=> {
+      if (method!=='POST') throw new Error('must not depend on reloading the list');
+      return {id:99,patient_code:'TJ03-0099',gender:'male'};
+    };
+    await submitCreatePatient();
+    return {page:window.targetPage, patient:JSON.parse(sessionStorage.getItem('currentPatient')),error:document.getElementById('cp-error').textContent};
+  });
+  assert.equal(result.error,'');
+  assert.equal(result.page,'entry');
+  assert.equal(result.patient.id,99);
+});

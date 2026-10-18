@@ -17,20 +17,22 @@ const ExportPage = {
     if (user.role === 'main_admin') {
       document.getElementById('export-center-wrap').style.display = '';
       try {
-        const centers = await api('GET', '/api/centers/');
+        const centers = await api('GET', '/api/centers/?limit=1000');
         const list = centers.items || centers || [];
         const sel = document.getElementById('export-center');
-        list.forEach(c => {
-          if (!c.is_active) return;
-          const opt = document.createElement('option');
-          opt.value = c.id;
-          opt.textContent = `${c.center_code} ${c.center_name}`;
-          sel.appendChild(opt);
-        });
+        sel.innerHTML = list.sort((a,b) => a.center_code.localeCompare(b.center_code, undefined, {numeric:true})).map(c => `<label class="block text-sm"><input type="checkbox" value="${c.id}" data-export-center> ${escapeText(c.center_code)} ${escapeText(c.center_name)}</label>`).join('');
+        this.toggleCenters();
+        document.getElementById('export-btn').disabled = false;
       } catch (e) {
-        console.error('加载中心列表失败:', e);
+        document.getElementById('export-center').innerHTML = '中心列表加载失败 <button type="button" onclick="ExportPage.init()" class="text-blue-600">重试</button>';
+        document.getElementById('export-btn').disabled = true;
       }
     }
+  },
+
+  toggleCenters() {
+    const all = document.getElementById('export-all-centers').checked;
+    document.querySelectorAll('[data-export-center]').forEach(el => { el.disabled = all; });
   },
 
   buildQuery() {
@@ -41,8 +43,11 @@ const ExportPage = {
     if (status) params.set('status', status);
     const visitStatus = document.getElementById('export-visit-status').value;
     if (visitStatus) params.set('visit_status', visitStatus);
-    const centerId = document.getElementById('export-center').value;
-    if (centerId) params.set('center_id', centerId);
+    if (getUser()?.role === 'main_admin' && !document.getElementById('export-all-centers').checked) {
+      const selected = Array.from(document.querySelectorAll('[data-export-center]:checked'));
+      if (!selected.length) throw new Error('请至少选择一家医院，或勾选全部中心');
+      selected.forEach(el => params.append('selected_centers', el.value));
+    }
     return params.toString();
   },
 
@@ -70,6 +75,7 @@ const ExportPage = {
         throw new Error(err.detail || '导出失败');
       }
       const blob = await res.blob();
+      if (token !== getToken()) throw new Error('账号已切换，已取消下载');
 
       // 从 Content-Disposition 取文件名（后端用 filename*=UTF-8'' 编码）
       const cd = res.headers.get('Content-Disposition') || '';

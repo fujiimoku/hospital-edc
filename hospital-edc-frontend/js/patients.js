@@ -3,6 +3,8 @@
 // 全局变量
 let patientCacheById = Object.create(null);
 let patientSearchTimer = null;
+let patientOffset = 0;
+let patientRequest = 0;
 
 const PatientImages = {
   patientId: null, generation: 0, busy: false,
@@ -110,7 +112,9 @@ const statusColorApi = {
 const statusLabelApi = { enrolled: '在研', completed: '已完成', dropout: '已脱落', withdrawn: '已退出' };
 
 // 加载患者列表
-async function loadPatients(search) {
+async function loadPatients(search, offset = 0) {
+  const request = ++patientRequest;
+  patientOffset = offset;
   const tbody = document.getElementById('patient-table');
   if (!tbody) {
     console.error('患者表格元素未找到');
@@ -120,12 +124,22 @@ async function loadPatients(search) {
   tbody.innerHTML = '<tr><td colspan="9" class="px-5 py-6 text-center text-gray-400">加载中…</td></tr>';
 
   try {
-    const q = search ? '?search=' + encodeURIComponent(search) + '&limit=50' : '?limit=50';
+    const params = new URLSearchParams({limit:50, skip:offset, sort:document.getElementById('patient-sort')?.value || 'center'});
+    const term = search ?? document.getElementById('patient-search')?.value;
+    if (term) params.set('search', term);
+    const center = document.getElementById('patient-center')?.value;
+    if (getUser()?.role === 'main_admin' && center) params.set('center_id', center);
+    const q = '?' + params;
     // 确保URL以斜杠结尾，避免307重定向
     const data = await api('GET', '/api/patients/' + q);
-    if (!data) return;
+    if (!data || request !== patientRequest) return;
+    const prev = document.getElementById('patient-prev');
+    const next = document.getElementById('patient-next');
+    if (prev) prev.disabled = offset === 0;
+    if (next) next.disabled = offset + data.items.length >= data.total;
     renderPatientTable(data.items, data.total);
   } catch(e) {
+    if (request !== patientRequest) return;
     console.error('加载患者失败:', e);
     tbody.innerHTML = '<tr><td colspan="9" class="px-5 py-6 text-center text-red-400">加载失败: ' + e.message + '</td></tr>';
   }
@@ -157,13 +171,10 @@ function renderPatientTable(items, total) {
     const statusCls = statusColorApi[p.status] || 'bg-gray-100 text-gray-500';
     const statusTxt = statusLabelApi[p.status] || p.status || '未知';
     const enroll = p.enrollment_date ? p.enrollment_date.slice(0,10) : '—';
-    const locked = !!p.has_submitted;
-    const btnCls = locked ? 'text-gray-300 text-xs cursor-not-allowed' : 'text-blue-500 text-xs hover:underline';
-    const btnAttr = locked
-      ? 'disabled title="该患者已提交，请到【已录入患者】管理界面更改"'
-      : `onclick="selectPatient(${p.id})"`;
-    return `<tr class="hover:bg-blue-50/40 cursor-pointer border-t border-gray-50">
-      <td class="px-5 py-3 font-mono text-blue-600 text-sm">${p.patient_code}</td>
+    const btnCls = 'text-blue-600 text-xs hover:underline';
+    const btnAttr = `onclick="selectPatient(${p.id})"`;
+    return `<tr class="hover:bg-blue-50/40 border-t border-gray-50">
+      <td class="px-5 py-3 font-mono text-blue-600 text-sm"><button onclick="selectPatient(${p.id})" class="hover:underline">${escapeText(p.patient_code)}</button><div class="text-xs text-gray-500">${escapeText(p.center_name || p.center_code || '')}</div></td>
       <td class="px-4 py-3 text-sm">${p.name_initials || '—'}</td>
       <td class="px-4 py-3 text-sm">${gender}</td>
       <td class="px-4 py-3 text-sm">${p.age || '—'}</td>
@@ -171,7 +182,7 @@ function renderPatientTable(items, total) {
       <td class="px-4 py-3 text-xs text-gray-500">${STUDY_GROUP_LABELS[p.study_group] || '未分组'}<div>${escapeText(STUDY_SUBGROUP_LABELS[p.study_subgroup] || '细分组待确认')}</div></td>
       <td class="px-4 py-3"><span class="score-badge ${statusCls}">${statusTxt}</span></td>
       <td class="px-4 py-3">${['main_admin','center_admin','researcher'].includes(getUser()?.role) ? `<button onclick="PatientImages.open(${p.id})" class="text-blue-600 text-xs">图片</button>` : '—'}</td>
-      <td class="px-4 py-3"><button ${btnAttr} class="${btnCls}">录入</button></td>
+      <td class="px-4 py-3"><button ${btnAttr} class="${btnCls}">查看／录入</button></td>
     </tr>`;
   }).join('');
 }
@@ -257,9 +268,9 @@ async function submitCreatePatient() {
     if (!p) return;
     closeCreatePatientModal();
     showToast('✓ 患者 ' + p.patient_code + ' 创建成功');
-    loadPatients();
-    // 自动跳转录入页
-    setTimeout(() => selectPatient(p.id), 300);
+    // Use the created record directly; a slow or filtered list must not block entry.
+    patientCacheById[p.id] = p;
+    selectPatient(p.id);
   } catch(e) {
     errEl.textContent = e.message || '创建失败';
   } finally {
@@ -281,4 +292,15 @@ function showToast(message, type = 'success') {
   setTimeout(() => {
     toast.remove();
   }, 3000);
+}
+
+async function setupPatientCenters() {
+  const select = document.getElementById('patient-center');
+  if (!select || getUser()?.role !== 'main_admin' || select.dataset.loaded) return;
+  select.style.display = '';
+  try {
+    const data = await api('GET', '/api/centers/?limit=1000');
+    select.innerHTML = '<option value="">全部中心</option>' + data.items.sort((a,b) => a.center_code.localeCompare(b.center_code, undefined, {numeric:true})).map(c => `<option value="${c.id}">${escapeText(c.center_code)} ${escapeText(c.center_name)}</option>`).join('');
+    select.dataset.loaded = '1';
+  } catch(e) { showToast('中心列表加载失败，请重新进入患者管理', 'error'); }
 }

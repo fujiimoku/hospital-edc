@@ -61,7 +61,7 @@ test('submitted patient images upload separately and downloads retain Chinese pa
       headers:{'Content-Type':'image/png','Content-Disposition':"attachment; filename*=utf-8''"+encodeURIComponent(filename)}});
     return route.fulfill({json:{items:entries}});
   });
-  assert.equal(await page.getByRole('button',{name:'录入',exact:true}).isDisabled(), true);
+  assert.equal(await page.getByRole('button',{name:'查看／录入',exact:true}).isEnabled(), true);
   await page.getByRole('button',{name:'图片',exact:true}).click();
   await page.getByText('尚未上传图片',{exact:true}).waitFor();
   await page.setInputFiles('#patient-images-files', {name:'test.png', mimeType:'image/png', buffer:Buffer.from('stub image')});

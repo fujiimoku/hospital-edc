@@ -16,6 +16,8 @@ function setToken(t) {
 }
 
 function clearToken() {
+  sessionStorage.removeItem('currentPatient');
+  sessionStorage.removeItem('pendingVisitId');
   if (typeof WeeklyEntry !== 'undefined') { WeeklyEntry.stop(); WeeklyEntry.week = ''; }
   sessionStorage.removeItem('edc_token');
   sessionStorage.removeItem('edc_user');
@@ -44,6 +46,7 @@ async function api(method, path, body) {
   if (body) opts.body = JSON.stringify(body);
 
   const res = await fetch(API_BASE + path, opts);
+  if (token !== getToken()) throw new Error('账号已切换，已忽略旧请求');
   if (res.status === 401) {
     clearToken();
     document.getElementById('login-overlay').classList.remove('hidden');
@@ -53,7 +56,9 @@ async function api(method, path, body) {
     const err = await res.json().catch(() => ({ detail: '请求失败' }));
     throw new Error(err.detail || '请求失败');
   }
-  return res.json();
+  const data = await res.json();
+  if (token !== getToken()) throw new Error('账号已切换，已忽略旧请求');
+  return data;
 }
 
 

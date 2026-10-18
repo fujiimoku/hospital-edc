@@ -35,21 +35,18 @@ async function doLogin() {
 }
 
 function onLoginSuccess(user) {
-  document.getElementById('login-overlay').classList.add('hidden');
-  const name = user.full_name || user.username;
-  document.getElementById('sidebar-username').textContent = name;
-  loadDashboard();
-  if (typeof Notifs !== 'undefined') Notifs.startPolling();
+  sessionStorage.removeItem('currentPatient');
+  sessionStorage.removeItem('pendingVisitId');
+  // Recreate every page, cache and timer under the newly authenticated account.
+  window.location.reload();
+
 }
 
 function doLogout() {
+  if (typeof VisitEntry !== 'undefined') VisitEntry.stopAutosave();
   clearToken();
-  sessionStorage.removeItem('currentPatient');  // 切换账号时不残留上一账号的患者
-  document.getElementById('login-overlay').classList.remove('hidden');
-  document.getElementById('login-username').value = '';
-  document.getElementById('login-password').value = '';
-  document.getElementById('login-error').textContent = '';
-  toggleAuthForm('login'); // 退出后显示登录表单
+  window.location.reload();
+
 }
 
 // 表单切换
