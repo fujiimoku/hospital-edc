@@ -23,8 +23,14 @@ const RecordedPage = {
     if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-6 text-center text-gray-400">加载中…</td></tr>';
     try {
-      const data = await api('GET', '/api/patients/?limit=200');
-      const rawItems = data.items || [];
+      const rawItems = [];
+      let total = 0;
+      do {
+        const data = await api('GET', `/api/patients/?limit=200&skip=${rawItems.length}&sort=center`);
+        total = data.total;
+        if (!data.items?.length) break;
+        rawItems.push(...data.items);
+      } while (rawItems.length < total);
       // "已录入" = 有已提交及之后状态的访视，或已签知情同意
       let items = rawItems.filter(p => p.has_submitted || p.has_consent);
       if (!rawItems.some(p => p.has_submitted !== undefined)) {
@@ -32,7 +38,7 @@ const RecordedPage = {
       }
       this._cacheById = Object.create(null);
       title.textContent = '已录入患者（' + items.length + '）';
-      footer.textContent = '共 ' + items.length + ' 条';
+      footer.textContent = `当前权限下全部患者 ${total} 人，本页符合条件 ${items.length} 人`;
       if (!items.length) {
         tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-8 text-center text-gray-400">暂无已录入患者</td></tr>';
         return;

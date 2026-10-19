@@ -47,7 +47,7 @@ async function loadPatientsPage() {
 
   if (!pageEl.hasAttribute('data-loaded')) {
     try {
-      const response = await fetch('pages/patients.html?v=20261018centers');
+      const response = await fetch('pages/patients.html?v=20261019fix');
       const html = await response.text();
       pageEl.innerHTML = html;
       pageEl.setAttribute('data-loaded', 'true');
@@ -75,7 +75,7 @@ async function loadEntry() {
 
   if (!pageEl.hasAttribute('data-loaded')) {
     try {
-      const response = await fetch('pages/visit-entry.html?v=20261018centers');
+      const response = await fetch('pages/visit-entry.html?v=20261019fix');
       const html = await response.text();
       pageEl.innerHTML = html;
       pageEl.setAttribute('data-loaded', 'true');
@@ -107,7 +107,7 @@ async function loadConsent() {
 
   if (!pageEl.hasAttribute('data-loaded')) {
     try {
-      const response = await fetch('pages/consent.html?v=20261018centers');
+      const response = await fetch('pages/consent.html?v=20261019fix');
       pageEl.innerHTML = await response.text();
       pageEl.setAttribute('data-loaded', 'true');
       if (typeof ConsentPage !== 'undefined') {
@@ -130,7 +130,7 @@ async function loadRecordedPatients() {
 
   if (!pageEl.hasAttribute('data-loaded')) {
     try {
-      const response = await fetch('pages/recorded.html?v=20261018centers');
+      const response = await fetch('pages/recorded.html?v=20261019fix');
       pageEl.innerHTML = await response.text();
       pageEl.setAttribute('data-loaded', 'true');
     } catch (e) {
@@ -154,7 +154,7 @@ async function loadReview() {
 
   if (!pageEl.hasAttribute('data-loaded')) {
     try {
-      const response = await fetch('pages/review.html?v=20261018centers');
+      const response = await fetch('pages/review.html?v=20261019fix');
       const html = await response.text();
       pageEl.innerHTML = html;
       pageEl.setAttribute('data-loaded', 'true');
@@ -180,7 +180,7 @@ async function loadExport() {
 
   if (!pageEl.hasAttribute('data-loaded')) {
     try {
-      const response = await fetch('pages/export.html?v=20261018centers');
+      const response = await fetch('pages/export.html?v=20261019fix');
       const html = await response.text();
       pageEl.innerHTML = html;
       pageEl.setAttribute('data-loaded', 'true');

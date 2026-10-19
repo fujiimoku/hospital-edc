@@ -33,7 +33,7 @@ def list_centers(
     total = query.count()
     items = query.order_by(Center.id).offset(skip).limit(limit).all()
 
-    return {"total": total, "items": items}
+    return {"total": total, "items": [CenterOut.model_validate(item).model_dump() for item in items]}
 
 
 @router.post("/", response_model=CenterOut)

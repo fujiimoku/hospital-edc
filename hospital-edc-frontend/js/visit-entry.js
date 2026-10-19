@@ -43,7 +43,11 @@ const VisitEntry = {
   },
 
   async uploadCostPhotos() {
-    if (this.currentVisit?.status !== 'draft' || this._uploadingPhotos) return;
+    if (this._uploadingPhotos) return;
+    if (this.currentVisit?.status !== 'draft') {
+      showToast('费用照片需在草稿访视中上传；待审核可先撤回修改，已审核需由总管理员退回更正', 'error');
+      return;
+    }
     const input = document.getElementById('cost-photo-files');
     const files = Array.from(input.files || []);
     if (!files.length) { showToast('请先选择费用照片', 'error'); return; }
@@ -259,6 +263,14 @@ const VisitEntry = {
   updateEditability() {
     const role = getUser()?.role;
     const editable = this.currentVisit?.status === 'draft' && ['researcher', 'center_admin', 'main_admin'].includes(role);
+    const photoHint = document.getElementById?.('cost-photo-edit-hint');
+    if (photoHint) {
+      const status = this.currentVisit?.status;
+      photoHint.textContent = editable ? '当前为草稿：请选择文件，再点击“上传费用照片”。' :
+        !['researcher', 'center_admin', 'main_admin'].includes(role) ? '当前账号没有上传权限，请由本院录入人员上传。' :
+        status === 'submitted' ? '本次访视待审核，暂不能新增费用照片。请在页面上方点击“撤回并修改”，填写原因后上传，再重新提交审核。' :
+        status ? '本次访视已审核或锁定，暂不能新增费用照片。请联系总管理员退回更正后上传。' : '请先选择或创建访视。';
+    }
     document.querySelectorAll('#entry-form-area input, #entry-form-area select, #entry-form-area textarea, #entry-form-area button:not(.tab-btn):not([data-photo-download])').forEach(el => {
       if (!editable && !el.disabled) {
         el.dataset.edcReadOnly = '1';

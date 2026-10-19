@@ -272,6 +272,7 @@
       <div class="border rounded-lg p-4 mb-4">
         <h3 class="font-semibold">本次访视费用照片</h3>
         <p class="text-sm text-gray-500 my-2">上传成功后，下方费用金额可留空。照片仅保存归档，暂不进行 OCR 识别。支持 JPG、PNG、WebP，每张最多 15MB。</p>
+        <p id="cost-photo-edit-hint" role="status" class="text-sm text-amber-700 my-3"></p>
         <input id="cost-photo-files" type="file" accept="image/jpeg,image/png,image/webp" multiple/>
         <button type="button" onclick="VisitEntry.uploadCostPhotos()" class="bg-blue-600 text-white rounded px-4 py-2 mt-2">上传费用照片</button>
         <div id="cost-photo-status" role="status" class="text-sm my-2"></div>

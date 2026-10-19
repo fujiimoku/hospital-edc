@@ -477,3 +477,28 @@ test('new patient opens directly even when current list filters exclude it', asy
   assert.equal(result.page,'entry');
   assert.equal(result.patient.id,99);
 });
+
+test('photo controls explain read-only state and restore after withdrawal', async t => {
+  const page = await entryPage(t);
+  await page.evaluate(() => {window.getUser=()=>({role:'researcher'}); VisitEntry.currentVisit.status='submitted'; VisitEntry.updateEditability();});
+  assert.equal(await page.locator('#cost-photo-files').isDisabled(),true);
+  assert.match(await page.locator('#cost-photo-edit-hint').textContent(),/撤回并修改/);
+  await page.evaluate(() => {VisitEntry.currentVisit.status='draft'; VisitEntry.updateEditability();});
+  assert.equal(await page.locator('#cost-photo-files').isEnabled(),true);
+  assert.match(await page.locator('#cost-photo-edit-hint').textContent(),/请选择文件/);
+});
+
+test('recorded list explains its subset and loads later pages before filtering', async t => {
+  const page = await entryPage(t);
+  await page.evaluate(html=>document.body.insertAdjacentHTML('beforeend',html),fs.readFileSync(path.join(root,'pages/recorded.html'),'utf8'));
+  await page.addScriptTag({path:path.join(root,'js/recorded.js')});
+  await page.evaluate(async()=>{
+    window.getToken=()=> 'test';
+    let calls=0;
+    window.api=async()=> ++calls===1 ? {total:3,items:[{id:1,patient_code:'TEST1',has_submitted:false,has_consent:false},{id:2,patient_code:'TEST2',has_submitted:true,latest_visit_status:'submitted'}]} : {total:3,items:[{id:3,patient_code:'TEST3',has_consent:true,latest_visit_status:'draft'}]};
+    await RecordedPage.init();
+  });
+  assert.equal(await page.locator('#recorded-table tr').count(),2);
+  assert.match(await page.locator('#recorded-list-footer').textContent(),/全部患者 3 人.*符合条件 2 人/);
+  assert.match(await page.locator('#recorded-table').textContent(),/TEST3/);
+});
