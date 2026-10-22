@@ -201,9 +201,9 @@ def sign_visit(
 def lock_visit(
     visit_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(require_admin),
+    current_user=Depends(require_qc),
 ):
-    """管理员锁定：signed → locked"""
+    """质控员或管理员锁定：signed → locked"""
     visit = _get_visit_with_access(visit_id, db, current_user, for_update=True)
     _transition(visit, "signed", "locked")
     _require_closed_queries(db, visit_id)

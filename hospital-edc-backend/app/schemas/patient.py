@@ -62,7 +62,14 @@ class PatientUpdate(BaseModel):
     withdraw_date: Optional[date] = None
 
 
+class PatientTrackingIn(BaseModel):
+    tracking_status: Literal["pending", "completed"]
+
+
 class PatientOut(BaseModel):
+    tracking_status: Literal["pending", "completed"] = "pending"
+    has_approved: bool = False
+    open_queries: int = 0
     study_subgroup: Optional[StudySubgroup] = None
     study_group: Optional[StudyGroup] = None
     smoking_history: Optional[Literal[1, 2]] = None

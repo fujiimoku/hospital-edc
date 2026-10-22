@@ -1,6 +1,7 @@
 """Patient-bound source images. No OCR, public file URLs, or automatic extraction of CRF costs."""
 import hashlib
 import io
+import logging
 import re
 import tempfile
 import warnings
@@ -16,7 +17,7 @@ from PIL import Image, UnidentifiedImageError
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import require_researcher, get_accessible_center_ids
+from app.dependencies import require_researcher, get_accessible_center_ids, get_current_user
 from app.models.patient import Patient
 from app.models.visit import Visit
 from app.models.patient_image import PatientImage
@@ -82,7 +83,7 @@ def audit(db, user, patient, image_id, action):
 
 
 @router.get("")
-def list_images(patient_id: int, visit_id: int | None = None, db: Session = Depends(get_db), user=Depends(require_researcher)):
+def list_images(patient_id: int, visit_id: int | None = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
     patient = get_patient(patient_id, db, user)
     query = db.query(PatientImage).filter_by(patient_id=patient.id)
     if visit_id is not None:
@@ -138,7 +139,7 @@ def upload_image(patient_id: int, visit_id: int | None = None, file: UploadFile 
 
 
 @router.get("/archive")
-def download_archive(patient_id: int, db: Session = Depends(get_db), user=Depends(require_researcher)):
+def download_archive(patient_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     patient = get_patient(patient_id, db, user)
     items = db.query(PatientImage).filter_by(patient_id=patient.id).order_by(PatientImage.id).all()
     if not items:
@@ -170,7 +171,7 @@ def download_archive(patient_id: int, db: Session = Depends(get_db), user=Depend
 
 
 @router.get("/{image_id}/download")
-def download_image(patient_id: int, image_id: int, db: Session = Depends(get_db), user=Depends(require_researcher)):
+def download_image(patient_id: int, image_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     patient = get_patient(patient_id, db, user)
     item = db.query(PatientImage).filter_by(id=image_id, patient_id=patient.id).first()
     if item is None:
@@ -179,3 +180,33 @@ def download_image(patient_id: int, image_id: int, db: Session = Depends(get_db)
     audit(db, user, patient, item.id, "download")
     db.commit()
     return FileResponse(path, media_type=item.media_type, filename=filename(patient, item), headers=PRIVATE_HEADERS)
+
+
+@router.delete("/{image_id}")
+def delete_image(patient_id: int, image_id: int, db: Session = Depends(get_db), user=Depends(require_researcher)):
+    patient = get_patient(patient_id, db, user)
+    item = db.query(PatientImage).filter_by(id=image_id, patient_id=patient.id).first()
+    if item is None:
+        raise HTTPException(404, "该患者没有这张图片")
+    if item.visit_id is not None:
+        visit = get_image_visit(item.visit_id, patient.id, db, for_update=True)
+        if visit.status != "draft":
+            raise HTTPException(400, "仅草稿访视可删除费用照片，请先退回更正")
+    path = image_path(item)
+    # Only hold bytes in memory during the transaction, to restore on a database failure.
+    content = path.read_bytes()
+    removed = False
+    try:
+        log_change(db, user, "patient_images", item.id,
+                   {"patient_id": (patient.id, None)}, "delete", center_id=patient.center_id)
+        db.delete(item)
+        db.flush()
+        path.unlink()
+        removed = True
+        db.commit()
+    except Exception:
+        db.rollback()
+        if removed:
+            path.write_bytes(content)
+        raise
+    return {"deleted": True, "id": image_id}

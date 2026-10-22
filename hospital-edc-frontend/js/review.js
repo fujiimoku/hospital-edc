@@ -2,7 +2,7 @@
 // 所有写操作复用现有后端端点（queries/visits），本页只做聚合展示与就地操作。
 // 按钮可见性与后端 require_* 权限一致：
 //   研究者(researcher)可答疑/签名；质控员(qc)可通过/关闭/提质疑；
-//   管理员(center_admin/main_admin)三者皆可；锁定仅管理员。
+//   管理员(center_admin/main_admin)三者皆可；质控员及管理员可锁定。
 const ReviewPage = {
   VISIT_TYPE_LABEL: { baseline: 'V1 基线', W12: 'V2 第12周', W26: 'V3 第26周', interim: '中间采集', M6: '6月', M12: '12月', M18: '18月', M24: '24月' },
   VISIT_STATUS_LABEL: { submitted: '待质控审核', qc_passed: '质控通过', signed: '已签名' },
@@ -54,7 +54,7 @@ const ReviewPage = {
       { label: '待关闭质疑', value: counts.to_close, hint: '等待质控确认', cls: counts.to_close ? 'text-blue-600' : 'text-gray-800' },
       { label: '待质控审核', value: counts.to_review, hint: 'submitted 访视', cls: counts.to_review ? 'text-blue-600' : 'text-gray-800' },
       { label: '待研究者签名', value: counts.to_sign, hint: 'qc_passed 访视', cls: counts.to_sign ? 'text-blue-600' : 'text-gray-800' },
-      { label: '待管理员锁定', value: counts.to_lock, hint: 'signed 访视', cls: counts.to_lock ? 'text-blue-600' : 'text-gray-800' },
+      { label: '待质控锁定', value: counts.to_lock, hint: 'signed 访视', cls: counts.to_lock ? 'text-blue-600' : 'text-gray-800' },
     ];
     el.innerHTML = cards.map(c => `
       <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
@@ -99,7 +99,7 @@ const ReviewPage = {
             <span class="text-xs text-gray-400">${q.center_code}</span>
             <button onclick="ReviewPage.openDetail(${q.patient_id}, ${q.visit_id})"
                     class="font-mono text-sm text-blue-600 hover:underline">${this._esc(q.patient_code)}</button>
-            <span class="text-sm text-gray-600">${this._esc(q.name_initials || '')}</span>
+            <span class="text-sm text-gray-600">${this._esc(q.full_name || q.name_initials || '')}</span>
             <span class="text-xs text-gray-400">·</span>
             <span class="text-sm text-gray-600">${vt}访视（${q.visit_date || '—'}）</span>
             <span class="text-xs text-gray-400">·</span>
@@ -119,7 +119,7 @@ const ReviewPage = {
     const groups = [
       { status: 'submitted',  title: '待质控审核', desc: '质控员审核数据，可通过或提出质疑', canAct: () => this._canQc() },
       { status: 'qc_passed',  title: '待研究者签名', desc: '研究者核对数据后签名确认', canAct: () => this._canResearcher() },
-      { status: 'signed',     title: '待管理员锁定', desc: '锁定后数据封存，不可再修改', canAct: () => this._canAdmin() },
+      { status: 'signed',     title: '待质控锁定', desc: '锁定后数据封存，不可再修改', canAct: () => this._canQc() },
     ];
     if (!visits.length) {
       el.innerHTML = '<div class="text-center text-gray-400 py-6 text-sm">暂无待办访视 🎉</div>';
@@ -157,7 +157,7 @@ const ReviewPage = {
     } else if (status === 'qc_passed' && this._canResearcher()) {
       actionHtml = `
         <button onclick="ReviewPage.visitAction(${v.id},'sign','已签名确认')" class="bg-blue-600 text-white text-xs px-4 py-1.5 rounded-lg hover:bg-blue-700">签名确认</button>`;
-    } else if (status === 'signed' && this._canAdmin()) {
+    } else if (status === 'signed' && this._canQc()) {
       actionHtml = `
         <button onclick="ReviewPage.visitAction(${v.id},'lock','访视已锁定')" class="bg-gray-700 text-white text-xs px-4 py-1.5 rounded-lg hover:bg-gray-800">锁定</button>`;
     }
@@ -166,7 +166,7 @@ const ReviewPage = {
         <span class="text-xs text-gray-400 w-12">${v.center_code}</span>
         <button onclick="ReviewPage.openDetail(${v.patient_id}, ${v.id})"
                 class="font-mono text-sm text-blue-600 hover:underline">${this._esc(v.patient_code)}</button>
-        <span class="text-sm text-gray-600">${this._esc(v.name_initials || '')}</span>
+        <span class="text-sm text-gray-600">${this._esc(v.full_name || v.name_initials || '')}</span>
         <span class="text-sm text-gray-600">${vt}访视（${v.visit_date || '—'}）</span>
         ${stChip}${openQ}
         <span class="flex-1"></span>
@@ -241,15 +241,7 @@ const ReviewPage = {
   openDetail(patientId, visitId) {
     const p = this._patientsById[patientId];
     if (!p) { showToast('患者信息加载失败，请刷新页面', 'error'); return; }
-    sessionStorage.setItem('currentPatient', JSON.stringify({
-      id: p.patient_id,
-      patient_code: p.patient_code,
-      name_initials: p.name_initials,
-      gender: null,
-      age: null,
-    }));
-    sessionStorage.setItem('pendingVisitId', String(visitId));
-    showPage('entry', document.querySelectorAll('.sidebar-item')[2]);
+    openPatientTab(patientId, visitId);
   },
 
   // HTML 转义（质疑/答复为用户输入）

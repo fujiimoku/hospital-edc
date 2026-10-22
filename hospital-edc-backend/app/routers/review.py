@@ -18,6 +18,7 @@ from app.models.patient import Patient
 from app.models.query import Query
 from app.models.visit import Visit
 from app.models.user import User
+from app.utils.crypto import decrypt
 
 router = APIRouter(prefix="/api/review", tags=["质控审计"])
 
@@ -55,6 +56,7 @@ def review_queue(
             "patient_id": p.id,
             "patient_code": p.patient_code,
             "name_initials": p.name_initials,
+            "full_name": decrypt(p.full_name_encrypted),
             "visit_type": v.visit_type,
             "visit_date": v.visit_date,
             "visit_status": v.status,
@@ -84,6 +86,7 @@ def review_queue(
             "patient_id": p.id,
             "patient_code": p.patient_code,
             "name_initials": p.name_initials,
+            "full_name": decrypt(p.full_name_encrypted),
             "visit_type": v.visit_type,
             "visit_date": v.visit_date,
             "status": v.status,

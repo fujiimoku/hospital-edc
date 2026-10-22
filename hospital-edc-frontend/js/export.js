@@ -5,14 +5,10 @@ const ExportPage = {
   async init() {
     const user = getUser();
     if (!user) return;
-    const isAdmin = user.role === 'main_admin' || user.role === 'center_admin';
-    if (!isAdmin) {
-      // 研究者/QC：只能脱敏导出，隐藏隐私提示
-      const deidentify = document.getElementById('export-deidentify');
-      deidentify.checked = true;
-      deidentify.disabled = true;
-      document.getElementById('export-privacy-hint').textContent = '您所在角色的导出固定为脱敏模式';
-    }
+    const deidentify = document.getElementById('export-deidentify');
+    deidentify.checked = true;
+    deidentify.disabled = true;
+    document.getElementById('export-privacy-hint').textContent = '所有角色均使用脱敏导出';
     // 总中心可以选择中心范围
     if (user.role === 'main_admin') {
       document.getElementById('export-center-wrap').style.display = '';
@@ -38,7 +34,7 @@ const ExportPage = {
   buildQuery() {
     const params = new URLSearchParams();
     params.set('format', document.getElementById('export-format').value);
-    params.set('deidentify', document.getElementById('export-deidentify').checked ? 'true' : 'false');
+    params.set('deidentify', 'true');
     const status = document.getElementById('export-status').value;
     if (status) params.set('status', status);
     const visitStatus = document.getElementById('export-visit-status').value;

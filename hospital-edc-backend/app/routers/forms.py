@@ -316,3 +316,17 @@ def get_all_forms(visit_id: int, db: Session = Depends(get_db), current_user=Dep
         "lifestyle": _to_dict(db.query(LifestyleAssessment).filter_by(visit_id=visit_id).first()),
         "meal_records": [_to_dict(r) for r in db.query(MealRecord).filter_by(visit_id=visit_id).all()],
     }
+
+
+@router.get("/{visit_id}/previous-medications")
+def previous_medications(visit_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    from sqlalchemy import or_, and_
+    current = _get_visit_with_access(visit_id, db, current_user)
+    previous = db.query(Visit).filter(Visit.patient_id == current.patient_id,
+        or_(Visit.visit_date < current.visit_date, and_(Visit.visit_date == current.visit_date, Visit.id < current.id))
+    ).order_by(Visit.visit_date.desc(), Visit.id.desc()).first()
+    if previous is None:
+        return {"source_visit": None, "medications": []}
+    rows = db.query(Medication).filter_by(visit_id=previous.id).order_by(Medication.id).all()
+    return {"source_visit": {"id": previous.id, "visit_date": previous.visit_date, "visit_type": previous.visit_type},
+            "medications": [{k: v for k, v in _to_dict(row).items() if k not in ('id', 'visit_id', 'created_at')} for row in rows]}

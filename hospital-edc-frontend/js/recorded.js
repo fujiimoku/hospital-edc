@@ -1,66 +1,36 @@
-// 已录入患者页：列出已提交/已锁定访视的患者，提供管理/修改入口
+// Membership is filtered on the server before counting and paging.
 const RecordedPage = {
-  GENDER_LABEL: { male: '男', female: '女' },
-  VISIT_STATUS_TEXT: { draft: '草稿', submitted: '待审核', qc_passed: '质控通过', signed: '已签名', locked: '已锁定' },
-  _cacheById: Object.create(null),
-
-  // 选择患者进入录入页（与患者管理的 selectPatient 一致：写入 sessionStorage 后跳转）
-  selectPatient(id) {
-    const patient = this._cacheById[id];
-    if (!patient) {
-      console.error('患者不存在:', id);
-      return;
-    }
-    sessionStorage.setItem('currentPatient', JSON.stringify(patient));
-    showPage('entry', document.querySelectorAll('.sidebar-item')[2]);
-  },
-
-  async init() {
+  offset: 0, limit: 20, generation: 0,
+  selectPatient(id) { openPatientTab(id); },
+  async init(offset = 0) {
     if (!getToken()) return;
+    const generation = ++this.generation;
+    this.offset = Math.max(0, offset);
     const tbody = document.getElementById('recorded-table');
     const footer = document.getElementById('recorded-list-footer');
-    const title = document.getElementById('recorded-list-title');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-6 text-center text-gray-400">加载中…</td></tr>';
+    document.getElementById('recorded-prev').disabled = true;
+    document.getElementById('recorded-next').disabled = true;
+    tbody.innerHTML = '<tr><td colspan="7" class="p-6">加载中…</td></tr>';
     try {
-      const rawItems = [];
-      let total = 0;
-      do {
-        const data = await api('GET', `/api/patients/?limit=200&skip=${rawItems.length}&sort=center`);
-        total = data.total;
-        if (!data.items?.length) break;
-        rawItems.push(...data.items);
-      } while (rawItems.length < total);
-      // "已录入" = 有已提交及之后状态的访视，或已签知情同意
-      let items = rawItems.filter(p => p.has_submitted || p.has_consent);
-      if (!rawItems.some(p => p.has_submitted !== undefined)) {
-        items = rawItems.filter(p => ['submitted', 'qc_passed', 'signed', 'locked'].includes(p.latest_visit_status));
-      }
-      this._cacheById = Object.create(null);
-      title.textContent = '已录入患者（' + items.length + '）';
-      footer.textContent = `当前权限下全部患者 ${total} 人，本页符合条件 ${items.length} 人`;
-      if (!items.length) {
-        tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-8 text-center text-gray-400">暂无已录入患者</td></tr>';
-        return;
-      }
-      tbody.innerHTML = items.map(p => {
-        this._cacheById[p.id] = p;
-        const enroll = p.enrollment_date ? p.enrollment_date.slice(0, 10) : '—';
-        const gender = this.GENDER_LABEL[p.gender] || p.gender || '—';
-        const st = this.VISIT_STATUS_TEXT[p.latest_visit_status] || '未建访视';
-        return `<tr class="hover:bg-blue-50/40 border-t border-gray-50">
-          <td class="px-5 py-3 font-mono text-blue-600 text-sm">${p.patient_code}</td>
-          <td class="px-4 py-3 text-sm">${p.full_name || p.name_initials || '—'}</td>
-          <td class="px-4 py-3 text-sm">${gender}</td>
-          <td class="px-4 py-3 text-sm">${p.age ?? '—'}</td>
-          <td class="px-4 py-3 text-sm">${enroll}</td>
-          <td class="px-4 py-3 text-sm">${st}</td>
-          <td class="px-4 py-3"><button onclick="RecordedPage.selectPatient(${p.id})" class="text-blue-600 text-xs hover:underline">查看／录入</button></td>
-        </tr>`;
-      }).join('');
-    } catch (e) {
-      tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-6 text-center text-red-400">加载失败: ${e.message || '未知'}</td></tr>`;
-      footer.textContent = '—';
+      const data = await api('GET', `/api/patients/?approved_only=true&limit=${this.limit}&skip=${this.offset}&sort=center`);
+      if (generation !== this.generation || !tbody.isConnected) return;
+      if (!data.items.length && this.offset > 0) return this.init(Math.max(0, this.offset - this.limit));
+      document.getElementById('recorded-list-title').textContent = `已录入患者（${data.total}）`;
+      footer.textContent = `共 ${data.total} 人，显示 ${data.items.length ? this.offset + 1 : 0}–${this.offset + data.items.length}`;
+      document.getElementById('recorded-prev').disabled = this.offset === 0;
+      document.getElementById('recorded-next').disabled = this.offset + data.items.length >= data.total;
+      tbody.innerHTML = data.items.map(p => `<tr class="border-t">
+        <td class="p-3"><button class="text-blue-600" onclick="RecordedPage.selectPatient(${p.id})">${escapeText(p.patient_code)}</button><small class="block">${escapeText(p.center_name || '')}</small></td>
+        <td class="p-3">${escapeText(p.full_name || p.name_initials || '—')}</td>
+        <td class="p-3">${p.gender === 'male' ? '男' : p.gender === 'female' ? '女' : '—'}</td>
+        <td class="p-3">${p.age ?? '—'}</td><td class="p-3">${escapeText(p.enrollment_date || '—')}</td>
+        <td class="p-3">${patientBadges(p)}</td>
+        <td class="p-3"><button class="text-blue-600" onclick="RecordedPage.selectPatient(${p.id})">查看／录入（新标签页）</button></td></tr>`).join('') || '<tr><td colspan="7" class="p-6">暂无审核通过的患者；全部患者请到患者管理查看。</td></tr>';
+    } catch(e) {
+      if (generation !== this.generation) return;
+      tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-red-600">加载失败：${escapeText(e.message)} <button onclick="RecordedPage.init(RecordedPage.offset)">重试</button></td></tr>`;
+      footer.textContent = '加载失败，不能据此判断患者已删除';
     }
   }
 };

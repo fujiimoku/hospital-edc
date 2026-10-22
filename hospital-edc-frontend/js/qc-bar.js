@@ -17,7 +17,7 @@ const QcBar = {
     show('qc-btn-query',  role === 'qc' && st === 'submitted');
     show('qc-btn-pass',   role === 'qc' && st === 'submitted');
     show('qc-btn-sign',   role === 'researcher' && st === 'qc_passed');
-    show('qc-btn-lock',   (role === 'center_admin' || role === 'main_admin') && st === 'signed');
+    show('qc-btn-lock',   ['qc', 'center_admin', 'main_admin'].includes(role) && st === 'signed');
     show('qc-btn-unlock', role === 'main_admin' && st === 'locked');
     show('qc-btn-reopen', role === 'main_admin' && ['qc_passed', 'signed'].includes(st));
     show('qc-btn-withdraw', ['researcher', 'center_admin', 'main_admin'].includes(role) && st === 'submitted');
@@ -27,7 +27,7 @@ const QcBar = {
       submitted: role === 'qc' ? '待质控审核 —— 可对可疑字段提起质疑；全部质疑关闭后方可通过'
                                : '待质控审核 —— 误填或误提交可选择原因后撤回修改，无需等待管理员；如有质疑请在下方回复',
       qc_passed: role === 'researcher' ? '质控已通过 —— 请核对数据并签名确认' : '质控已通过 —— 等待研究者签名',
-      signed:    '已签名 —— 数据只读，等待管理员锁定；更正须退回草稿并重新审核签名',
+      signed:    '已签名 —— 数据只读，等待质控锁定；更正须退回草稿并重新审核签名',
       locked:    '已锁定 —— 数据封存，仅总管理员可解锁',
     };
     const hint = document.getElementById('qc-bar-hint');

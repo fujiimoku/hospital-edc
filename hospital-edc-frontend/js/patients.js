@@ -12,6 +12,7 @@ const PatientImages = {
     if (this.busy) return;
     this.patientId = id;
     const generation = ++this.generation;
+    PhotoPreview.clear(document.getElementById('patient-images-list'));
     document.getElementById('patient-images-modal')?.remove();
     const patient = patientCacheById[id];
     const modal = document.createElement('div');
@@ -27,12 +28,14 @@ const PatientImages = {
       <p id="patient-images-status" role="status" class="text-sm my-2"></p>
       <div id="patient-images-list">加载中…</div></div>`;
     document.body.appendChild(modal);
+    if (getUser()?.role === 'qc') {document.getElementById('patient-images-files').hidden=true;document.getElementById('patient-images-upload').hidden=true;}
     await this.refresh(id, generation);
   },
   close() {
     if (this.busy) { this.status('正在处理图片，请稍候再关闭'); return; }
     this.generation++;
     this.patientId = null;
+    PhotoPreview.clear(document.getElementById('patient-images-list'));
     document.getElementById('patient-images-modal')?.remove();
   },
   status(message) { const el = document.getElementById('patient-images-status'); if (el) el.textContent = message; },
@@ -40,8 +43,10 @@ const PatientImages = {
     try {
       const data = await api('GET', `/api/patients/${id}/images`);
       if (generation !== this.generation) return;
+      PhotoPreview.clear(document.getElementById('patient-images-list'));
       document.getElementById('patient-images-list').innerHTML = data.items.length ? data.items.map(item =>
-        `<div class="border-t py-3 flex justify-between gap-3"><span>${escapeText(item.filename)}<small class="block text-gray-500">${(item.size_bytes / 1024 / 1024).toFixed(2)} MB · ${escapeText(item.created_at || '')}</small></span><button class="text-blue-600" onclick="PatientImages.download('${item.id}/download')">下载</button></div>`).join('') : '尚未上传图片';
+        `<div class="border-t py-3 flex justify-between gap-3">${PhotoPreview.thumbnail(item)}<span>${escapeText(item.filename)}<small class="block text-gray-500">${(item.size_bytes / 1024 / 1024).toFixed(2)} MB · ${escapeText(item.created_at || '')}</small></span><button class="text-blue-600" onclick="PatientImages.download('${item.id}/download')">下载</button>${getUser()?.role !== 'qc' ? `<button class="text-red-600" onclick="PatientImages.remove(${item.id})">删除</button>` : ''}</div>`).join('') : '尚未上传图片';
+      PhotoPreview.load(document.getElementById('patient-images-list'),id,data.items);
       document.getElementById('patient-images-archive').disabled = !data.items.length;
     } catch (error) { if (generation === this.generation) this.status(error.message); }
   },
@@ -80,6 +85,18 @@ const PatientImages = {
       this.busy = false; input.disabled = false;
       await this.refresh(id);
     }
+  },
+  async remove(imageId) {
+    if (this.busy || !confirm('确认删除这张图片？删除后无法恢复。')) return;
+    const id = this.patientId;
+    this.busy = true;
+    this.status('正在删除…');
+    try {
+      await this.request(`/api/patients/${id}/images/${imageId}`, {method: 'DELETE'});
+      this.status('图片已删除');
+      await this.refresh(id);
+    } catch (error) { this.status(error.message); }
+    finally { this.busy = false; }
   },
   async download(suffix) {
     if (this.busy) return;
@@ -121,7 +138,8 @@ async function loadPatients(search, offset = 0) {
     return;
   }
 
-  tbody.innerHTML = '<tr><td colspan="9" class="px-5 py-6 text-center text-gray-400">加载中…</td></tr>';
+  tbody.innerHTML = '<p class="p-6 text-gray-500">正在加载患者…</p>';
+  for (const id of ['patient-prev','patient-next']) { const button=document.getElementById(id); if(button) button.disabled=true; }
 
   try {
     const params = new URLSearchParams({limit:50, skip:offset, sort:document.getElementById('patient-sort')?.value || 'center'});
@@ -129,10 +147,13 @@ async function loadPatients(search, offset = 0) {
     if (term) params.set('search', term);
     const center = document.getElementById('patient-center')?.value;
     if (getUser()?.role === 'main_admin' && center) params.set('center_id', center);
+    const tracking = document.getElementById('patient-tracking')?.value;
+    if (tracking) params.set('tracking_status', tracking);
     const q = '?' + params;
     // 确保URL以斜杠结尾，避免307重定向
     const data = await api('GET', '/api/patients/' + q);
-    if (!data || request !== patientRequest) return;
+    if (!data || request !== patientRequest || !tbody.isConnected) return;
+    if (!data.items.length && offset > 0) return loadPatients(search, Math.max(0, offset-50));
     const prev = document.getElementById('patient-prev');
     const next = document.getElementById('patient-next');
     if (prev) prev.disabled = offset === 0;
@@ -141,7 +162,7 @@ async function loadPatients(search, offset = 0) {
   } catch(e) {
     if (request !== patientRequest) return;
     console.error('加载患者失败:', e);
-    tbody.innerHTML = '<tr><td colspan="9" class="px-5 py-6 text-center text-red-400">加载失败: ' + e.message + '</td></tr>';
+    tbody.innerHTML = `<p class="p-6 text-red-600">加载失败：${escapeText(e.message)} <button onclick="loadPatients(undefined,patientOffset)">重试</button></p>`;
   }
 }
 
@@ -157,11 +178,11 @@ function renderPatientTable(items, total) {
   }
 
   title.textContent = '患者列表（' + total + '）';
-  footer.textContent = '共 ' + total + ' 条，显示 ' + items.length + ' 条';
+  footer.textContent = `符合条件共 ${total} 人，当前显示 ${items.length ? patientOffset+1 : 0}—${patientOffset+items.length} 人`;
   patientCacheById = Object.create(null);
 
   if (!items.length) {
-    tbody.innerHTML = '<tr><td colspan="9" class="px-5 py-8 text-center text-gray-400">暂无患者数据</td></tr>';
+    tbody.innerHTML = '<p class="p-6 text-gray-500">当前筛选下暂无患者</p>';
     return;
   }
 
@@ -173,17 +194,17 @@ function renderPatientTable(items, total) {
     const enroll = p.enrollment_date ? p.enrollment_date.slice(0,10) : '—';
     const btnCls = 'text-blue-600 text-xs hover:underline';
     const btnAttr = `onclick="selectPatient(${p.id})"`;
-    return `<tr class="hover:bg-blue-50/40 border-t border-gray-50">
-      <td class="px-5 py-3 font-mono text-blue-600 text-sm"><button onclick="selectPatient(${p.id})" class="hover:underline">${escapeText(p.patient_code)}</button><div class="text-xs text-gray-500">${escapeText(p.center_name || p.center_code || '')}</div></td>
-      <td class="px-4 py-3 text-sm">${p.name_initials || '—'}</td>
-      <td class="px-4 py-3 text-sm">${gender}</td>
-      <td class="px-4 py-3 text-sm">${p.age || '—'}</td>
-      <td class="px-4 py-3 text-sm">${enroll}</td>
-      <td class="px-4 py-3 text-xs text-gray-500">${STUDY_GROUP_LABELS[p.study_group] || '未分组'}<div>${escapeText(STUDY_SUBGROUP_LABELS[p.study_subgroup] || '细分组待确认')}</div></td>
-      <td class="px-4 py-3"><span class="score-badge ${statusCls}">${statusTxt}</span></td>
-      <td class="px-4 py-3">${['main_admin','center_admin','researcher'].includes(getUser()?.role) ? `<button onclick="PatientImages.open(${p.id})" class="text-blue-600 text-xs">图片</button>` : '—'}</td>
-      <td class="px-4 py-3"><button ${btnAttr} class="${btnCls}">查看／录入</button></td>
-    </tr>`;
+    return `<article class="relative border border-gray-200 rounded-xl p-4 bg-white shadow-sm" data-patient-id="${p.id}">
+      ${patientBadges(p)}
+      <button onclick="selectPatient(${p.id})" class="text-blue-700 text-lg font-semibold my-3">${escapeText(p.full_name || p.name_initials || '未填写姓名')} · ${escapeText(p.patient_code)}</button>
+      <p class="text-sm text-gray-500">${escapeText(p.center_name || p.center_code || '')} · ${escapeText(gender)} · ${p.age ?? '—'}岁</p>
+      <p class="text-sm my-2">入组：${escapeText(enroll)} · ${escapeText(statusTxt)}</p>
+      <p class="text-sm">${escapeText(STUDY_GROUP_LABELS[p.study_group] || '未分组')} · ${escapeText(STUDY_SUBGROUP_LABELS[p.study_subgroup] || '细分组待确认')}</p>
+      <div class="flex flex-wrap gap-3 items-center mt-3">
+        <label class="text-sm">追踪 <select aria-label="追踪标签" data-previous="${p.tracking_status || 'pending'}" onchange="setPatientTracking(${p.id},this)" class="border rounded p-1"><option value="pending" ${p.tracking_status !== 'completed' ? 'selected' : ''}>待追踪</option><option value="completed" ${p.tracking_status === 'completed' ? 'selected' : ''}>已完成追踪</option></select></label>
+        <button onclick="PatientImages.open(${p.id})" class="text-blue-600 text-sm">图片</button>
+        <button onclick="selectPatient(${p.id})" class="text-blue-600 text-sm">查看／录入（新标签页）</button>
+      </div></article>`;
   }).join('');
 }
 
@@ -194,7 +215,8 @@ function onPatientSearch(val) {
 }
 
 // 选择患者进入录入页
-async function selectPatient(id) {
+async function selectPatient(id, sameTab = false) {
+  if (!sameTab) { openPatientTab(id); return; }
   const patient = patientCacheById[id];
   if (!patient) {
     console.error('患者不存在:', id);
@@ -203,6 +225,7 @@ async function selectPatient(id) {
 
   // 保存当前选择的患者到sessionStorage。
   // 录入页每次进入都会据此重新加载该患者的访视列表和草稿（见 navigation.js 的 loadEntry）
+  const url = new URL(location.href); url.searchParams.set('patient', String(id)); url.searchParams.delete('visit'); history.replaceState(null, '', url);
   sessionStorage.setItem('currentPatient', JSON.stringify(patient));
 
   // 跳转到数据录入页面
@@ -270,7 +293,7 @@ async function submitCreatePatient() {
     showToast('✓ 患者 ' + p.patient_code + ' 创建成功');
     // Use the created record directly; a slow or filtered list must not block entry.
     patientCacheById[p.id] = p;
-    selectPatient(p.id);
+    selectPatient(p.id, true);
   } catch(e) {
     errEl.textContent = e.message || '创建失败';
   } finally {

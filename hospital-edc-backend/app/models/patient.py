@@ -18,6 +18,8 @@ class Patient(Base):
     smoking_history = Column(Integer)
     drinking_history = Column(Integer)
 
+    tracking_status = Column(String(16), nullable=False, default="pending", server_default="pending")
+
     # 姓名拼音首字母（脱敏）
     name_initials = Column(String(10))
     # 完整姓名（Fernet 加密存储，见 app/utils/crypto.py）

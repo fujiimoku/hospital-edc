@@ -19,6 +19,7 @@ async function entryPage(t) {
   await page.goto('http://edc.test/');
   await page.addScriptTag({path: path.join(root, 'js/config.js')});
   await page.evaluate(() => {window.showToast = () => {};});
+  await page.addScriptTag({path: path.join(root, 'js/patient-workflow.js')});
   await page.addScriptTag({path: path.join(root, 'js/visit-entry.js')});
   await page.evaluate(() => {
     VisitEntry.currentPatient = {id: 1, patient_code: 'TEST-1', gender: 'female', study_group: 'usual_weekly'};
@@ -365,19 +366,20 @@ test('medication selects retain custom routes and switch to standard choices', a
 test('submitted patients can enter from management via number or action', async t => {
   const page = await entryPage(t);
   await page.evaluate(() => {
-    document.body.insertAdjacentHTML('beforeend','<table><tbody id="patient-table"></tbody></table><div id="patient-list-footer"></div><div id="patient-list-title"></div>');
+    document.body.insertAdjacentHTML('beforeend','<div id="patient-table"></div><div id="patient-list-footer"></div><div id="patient-list-title"></div>');
     window.getUser = () => ({role:'researcher'});
     window.showPage = name => { window.lastPage = name; };
   });
   await page.addScriptTag({path:path.join(root,'js/patients.js')});
   await page.evaluate(() => renderPatientTable([{id:33, patient_code:'TEST33', gender:'female', has_submitted:true, status:'active'}],1));
-  const action = page.getByRole('button',{name:'查看／录入',exact:true});
+  await page.evaluate(()=>{window.openPatientTab=id=>{window.openedPatient=id;};});
+  const action = page.getByRole('button',{name:'查看／录入（新标签页）',exact:true});
   assert.equal(await action.isEnabled(), true);
   await action.click();
-  assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem('currentPatient')).id),33);
-  assert.equal(await page.evaluate(() => lastPage),'entry');
-  await page.getByRole('button',{name:'TEST33',exact:true}).click();
-  assert.equal(await page.evaluate(() => lastPage),'entry');
+  assert.equal(await page.evaluate(() => window.openedPatient),33);
+  assert.equal(await page.evaluate(() => window.openedPatient),33);
+  await page.getByRole('button',{name:/TEST33/}).click();
+  assert.equal(await page.evaluate(() => window.openedPatient),33);
 });
 
 test('stale patient visit lists cannot replace the selected patient', async t => {
@@ -488,17 +490,19 @@ test('photo controls explain read-only state and restore after withdrawal', asyn
   assert.match(await page.locator('#cost-photo-edit-hint').textContent(),/请选择文件/);
 });
 
-test('recorded list explains its subset and loads later pages before filtering', async t => {
+test('recorded list uses approved-only server paging and keeps later drafts visible', async t => {
   const page = await entryPage(t);
   await page.evaluate(html=>document.body.insertAdjacentHTML('beforeend',html),fs.readFileSync(path.join(root,'pages/recorded.html'),'utf8'));
   await page.addScriptTag({path:path.join(root,'js/recorded.js')});
   await page.evaluate(async()=>{
     window.getToken=()=> 'test';
-    let calls=0;
-    window.api=async()=> ++calls===1 ? {total:3,items:[{id:1,patient_code:'TEST1',has_submitted:false,has_consent:false},{id:2,patient_code:'TEST2',has_submitted:true,latest_visit_status:'submitted'}]} : {total:3,items:[{id:3,patient_code:'TEST3',has_consent:true,latest_visit_status:'draft'}]};
+    window.api=async(method,url)=> {window.recordedUrl=url;return {total:21,items:[{id:2,patient_code:'TEST2',has_approved:true,latest_visit_status:'draft'}]};};
     await RecordedPage.init();
   });
-  assert.equal(await page.locator('#recorded-table tr').count(),2);
-  assert.match(await page.locator('#recorded-list-footer').textContent(),/全部患者 3 人.*符合条件 2 人/);
-  assert.match(await page.locator('#recorded-table').textContent(),/TEST3/);
+  assert.match(await page.evaluate(()=>window.recordedUrl), /approved_only=true/);
+  assert.equal(await page.locator('#recorded-table tr').count(),1);
+  assert.match(await page.locator('#recorded-list-footer').textContent(),/共 21 人/);
+  assert.match(await page.locator('#recorded-table').textContent(),/TEST2/);
+  await page.locator('#recorded-next').click();
+  assert.match(await page.evaluate(()=>window.recordedUrl), /skip=20/);
 });

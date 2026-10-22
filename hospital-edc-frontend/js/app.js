@@ -16,7 +16,8 @@ document.addEventListener('DOMContentLoaded', function() {
   if (token && user) {
     document.getElementById('login-overlay').classList.add('hidden');
     document.getElementById('sidebar-username').textContent = user.full_name || user.username;
-    loadDashboard();
+    if (new URLSearchParams(location.search).has('patient')) showPage('entry', document.querySelectorAll('.sidebar-item')[2]);
+    else loadDashboard();
     if (typeof Notifs !== 'undefined') Notifs.startPolling();
   }
 });

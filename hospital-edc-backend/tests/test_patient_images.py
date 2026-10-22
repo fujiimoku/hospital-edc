@@ -34,6 +34,55 @@ def upload(client, token, pid, data=None, name='photo.png'):
                        files={'file': (name, picture() if data is None else data, 'image/png')})
 
 
+def test_delete_image_permissions_audit_and_storage(client, researcher1_token, researcher2_token, qc1_token, db):
+    patient = create_patient(client, researcher1_token)
+    pid = patient['id']
+    item = upload(client, researcher1_token, pid).json()
+    row = db.get(PatientImage, item['id'])
+    path = Path(settings.UPLOAD_DIR) / 'patient_images' / row.storage_key
+    url = f"/api/patients/{pid}/images/{item['id']}"
+    assert client.delete(url).status_code == 401
+    for token in [researcher2_token, qc1_token]:
+        assert client.delete(url, headers=auth_header(token)).status_code == 403
+    other = create_patient(client, researcher1_token)
+    assert client.delete(f"/api/patients/{other['id']}/images/{item['id']}", headers=auth_header(researcher1_token)).status_code == 404
+    assert path.exists()
+    headers = auth_header(researcher1_token)
+    assert client.delete(url, headers=headers).status_code == 200
+    assert not path.exists()
+    assert client.get(f'/api/patients/{pid}/images', headers=headers).json()['items'] == []
+    assert client.get(url + '/download', headers=headers).status_code == 404
+    assert client.get(f'/api/patients/{pid}/images/archive', headers=headers).status_code == 404
+    assert client.delete(url, headers=headers).status_code == 404
+    event = db.query(AuditLog).filter_by(table_name='patient_images', record_id=item['id'], action='delete').one()
+    assert event.old_value == str(pid) and event.new_value is None
+
+
+def test_delete_visit_image_requires_draft_and_preserves_file_on_commit_failure(client, admin_token, monkeypatch, db):
+    patient = create_patient(client, admin_token)
+    pid = patient['id']
+    visit = create_visit(client, admin_token, pid)
+    headers = auth_header(admin_token)
+    item = client.post(f'/api/patients/{pid}/images?visit_id={visit}', headers=headers,
+                       files={'file': ('cost.png', picture(), 'image/png')}).json()
+    url = f"/api/patients/{pid}/images/{item['id']}"
+    path = Path(settings.UPLOAD_DIR) / 'patient_images' / db.get(PatientImage, item['id']).storage_key
+    from sqlalchemy.orm import Session
+    with monkeypatch.context() as patch:
+        def fail(*args, **kwargs):
+            raise RuntimeError('simulated commit failure')
+        patch.setattr(Session, 'commit', fail)
+        with pytest.raises(RuntimeError, match='simulated'):
+            client.delete(url, headers=headers)
+    assert path.exists()
+    assert client.get(url + '/download', headers=headers).status_code == 200
+    assert client.post(f'/api/visits/{visit}/submit', headers=headers).status_code == 200
+    assert client.delete(url, headers=headers).status_code == 400
+    assert path.exists()
+    assert client.post(f'/api/visits/{visit}/reopen', headers=headers, json={'reason': '照片上传错误'}).status_code == 200
+    assert client.delete(url, headers=headers).status_code == 200
+
+
 def test_images_roundtrip_archive_names_audit_and_private_storage(client, admin_token, db):
     patient = create_patient(client, admin_token, full_name='测试患者', study_group='integrated_weekly', study_subgroup='icodec')
     pid = patient['id']
@@ -52,7 +101,8 @@ def test_images_roundtrip_archive_names_audit_and_private_storage(client, admin_
     with zipfile.ZipFile(io.BytesIO(archive.content)) as zipped:
         assert zipped.namelist() == names
         assert all(zipped.read(n) == picture() for n in names)
-    events = db.query(AuditLog).filter(AuditLog.table_name == 'patient_images', AuditLog.record_id.in_(ids)).all()
+    events = db.query(AuditLog).filter(AuditLog.table_name == 'patient_images', AuditLog.record_id.in_(ids),
+                                     AuditLog.new_value == str(pid)).all()
     assert {e.action for e in events} == {'upload', 'download', 'download_archive'}
     assert all('测试患者' not in (e.new_value or '') for e in events)
     rows = db.query(PatientImage).filter(PatientImage.id.in_(ids)).all()
@@ -66,7 +116,7 @@ def test_access_cross_center_cross_patient_qc_and_anonymous(client, researcher1_
     image_id = upload(client, researcher1_token, p1['id']).json()['id']
     for token in [researcher2_token, qc1_token]:
         for suffix in ['', '/archive', f'/{image_id}/download']:
-            assert client.get(f"/api/patients/{p1['id']}/images{suffix}", headers=auth_header(token)).status_code == 403
+            assert client.get(f"/api/patients/{p1['id']}/images{suffix}", headers=auth_header(token)).status_code == (200 if token == qc1_token else 403)
         assert upload(client, token, p1['id']).status_code == 403
     assert client.get(f"/api/patients/{p2['id']}/images/{image_id}/download", headers=auth_header(researcher2_token)).status_code == 404
     assert client.get(f"/api/patients/{p1['id']}/images").status_code == 401

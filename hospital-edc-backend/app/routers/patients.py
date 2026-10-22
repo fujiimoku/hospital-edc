@@ -1,14 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import exists
+from sqlalchemy import exists, func
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 from app.database import get_db
 from app.models.center import Center
 from app.models.patient import Patient
 from app.models.visit import Visit
+from app.models.query import Query as DataQuery
 from app.models.consent import ConsentRecord
-from app.schemas.patient import PatientCreate, PatientUpdate, PatientOut
+from app.schemas.patient import PatientCreate, PatientUpdate, PatientOut, PatientTrackingIn
 from app.dependencies import get_current_user, get_accessible_center_ids, require_researcher
 from app.services.patient_code import generate_patient_code
 from app.services.audit import log_change, diff_model
@@ -32,18 +33,21 @@ def _apply_privacy(patient: Patient, current_user) -> None:
     )
     full_name = decrypt(patient.full_name_encrypted)
     id_card = decrypt(patient.id_card_encrypted)
-    patient.full_name = full_name if can_see_plain else mask(full_name, 1)
+    can_see_name = can_see_plain or (current_user.role == "qc" and current_user.center_id == patient.center_id)
+    patient.full_name = full_name if can_see_name else mask(full_name, 1)
     patient.id_card = id_card if can_see_plain else mask(id_card, 3)
     patient.phone = patient.phone if can_see_plain else mask(patient.phone, 3)
 
 
 @router.get("/", response_model=dict)
 def list_patients(
-    skip: int = 0,
-    limit: int = 20,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=1000),
     search: Optional[str] = Query(None, description="按患者编号或姓名首字母搜索"),
     status: Optional[str] = Query(None, description="enrolled | completed | dropout | withdrawn"),
     center_id: Optional[int] = Query(None),
+    approved_only: bool = Query(False),
+    tracking_status: Optional[str] = Query(None, pattern='^(pending|completed)$'),
     sort: str = Query('newest', pattern='^(newest|center|patient_code)$'),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
@@ -64,6 +68,9 @@ def list_patients(
         .exists()
     )
 
+    has_approved_sq = db.query(Visit.id).filter(Visit.patient_id == Patient.id, Visit.status.in_(["qc_passed", "signed", "locked"])).exists()
+    open_queries_sq = db.query(func.count(DataQuery.id)).join(Visit, DataQuery.visit_id == Visit.id).filter(Visit.patient_id == Patient.id, DataQuery.status != "closed").scalar_subquery()
+
     has_consent_sq = (
         db.query(ConsentRecord.id)
         .filter(ConsentRecord.patient_id == Patient.id)
@@ -75,6 +82,8 @@ def list_patients(
         has_submitted_sq.label("has_submitted"),
         has_consent_sq.label("has_consent"),
         latest_status_sq.label("latest_visit_status"),
+        has_approved_sq.label("has_approved"),
+        open_queries_sq.label("open_queries"),
     )
 
     # 根据用户权限过滤中心
@@ -92,6 +101,10 @@ def list_patients(
         )
     if status:
         query = query.filter(Patient.status == status)
+    if approved_only:
+        query = query.filter(has_approved_sq)
+    if tracking_status:
+        query = query.filter(Patient.tracking_status == tracking_status)
     total = query.count()
     ordering = [Patient.id.desc()] if sort == 'newest' else [Patient.center_code, Patient.id]
     if sort == 'patient_code':
@@ -99,9 +112,11 @@ def list_patients(
     rows = query.order_by(*ordering).offset(skip).limit(limit).all()
     center_names = dict(db.query(Center.id, Center.center_name).filter(Center.id.in_({r[0].center_id for r in rows})).all())
     items = []
-    for p, has_submitted, has_consent, latest_visit_status in rows:
+    for p, has_submitted, has_consent, latest_visit_status, has_approved, open_queries in rows:
         _apply_privacy(p, current_user)
         d = PatientOut.model_validate(p).model_dump()
+        d["has_approved"] = bool(has_approved)
+        d["open_queries"] = open_queries
         d["has_submitted"] = bool(has_submitted)
         d["has_consent"] = bool(has_consent)
         d["latest_visit_status"] = latest_visit_status
@@ -371,3 +386,21 @@ def create_patient_visit(
     db.commit()
     db.refresh(visit)
     return visit
+
+
+@router.put("/{patient_id}/tracking")
+def set_tracking(patient_id: int, data: PatientTrackingIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user.role not in ('researcher', 'qc', 'center_admin', 'main_admin'):
+        raise HTTPException(403, '无权设置追踪标签')
+    patient = db.query(Patient).filter_by(id=patient_id).with_for_update().first()
+    if not patient:
+        raise HTTPException(404, '患者不存在')
+    allowed = get_accessible_center_ids(current_user)
+    if allowed is not None and patient.center_id not in allowed:
+        raise HTTPException(403, '无权修改该中心的追踪标签')
+    before = patient.tracking_status
+    patient.tracking_status = data.tracking_status
+    if before != data.tracking_status:
+        log_change(db, current_user, 'patients', patient.id, {'tracking_status': (before, data.tracking_status)}, center_id=patient.center_id)
+    db.commit()
+    return {'tracking_status': patient.tracking_status}

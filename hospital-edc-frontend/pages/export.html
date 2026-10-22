@@ -45,7 +45,7 @@
     <!-- 脱敏开关 -->
     <label id="export-deidentify-wrap" class="flex items-center gap-2.5 mb-5 cursor-pointer select-none">
       <input type="checkbox" id="export-deidentify" checked class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-      <span class="text-sm text-gray-700">脱敏导出（隐藏患者姓名/身份证/电话）。<span id="export-privacy-hint" class="text-gray-400 text-xs">取消勾选将导出含隐私字段的明文数据（需管理员权限，慎用）</span></span>
+      <span class="text-sm text-gray-700">脱敏导出（隐藏患者姓名/身份证/电话）。<span id="export-privacy-hint" class="text-gray-400 text-xs">所有角色均使用脱敏导出</span></span>
     </label>
 
     <button id="export-btn" onclick="ExportPage.download()"

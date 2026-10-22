@@ -5,7 +5,7 @@ from app.database import get_db
 from app.models.center import Center
 from app.models.user import User
 from app.schemas.center import CenterCreate, CenterUpdate, CenterOut
-from app.dependencies import get_current_user, require_main_admin
+from app.dependencies import get_current_user, require_main_admin, get_accessible_center_ids
 
 router = APIRouter(prefix="/api/centers", tags=["中心管理"])
 
@@ -21,6 +21,9 @@ def list_centers(
 ):
     """获取中心列表"""
     query = db.query(Center)
+    accessible = get_accessible_center_ids(current_user)
+    if accessible is not None:
+        query = query.filter(Center.id.in_(accessible))
 
     if search:
         query = query.filter(
@@ -61,6 +64,9 @@ def get_center(
     current_user: User = Depends(get_current_user),
 ):
     """获取中心详情"""
+    accessible = get_accessible_center_ids(current_user)
+    if accessible is not None and center_id not in accessible:
+        raise HTTPException(403, "无权查看该中心")
     center = db.query(Center).filter(Center.id == center_id).first()
     if not center:
         raise HTTPException(404, "中心不存在")

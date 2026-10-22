@@ -1,6 +1,6 @@
 <!-- 已录入患者页：已提交/锁定患者的管理与修改入口 -->
 <div class="max-w-5xl mx-auto">
-  <p class="text-sm text-gray-500 mb-3">本页仅显示有已提交访视或已签知情同意的患者，可能包含后续访视草稿；全部患者请在“患者管理”查看。两页人数可能不同。</p>
+  <p class="text-sm text-gray-500 mb-3">本页显示至少有一次访视审核通过的患者（包括已签名、已锁定），后续访视仍可为草稿。待审核及尚未录入的患者请到“患者管理”查看。</p>
   <div class="flex items-center justify-between mb-4">
     <h2 class="text-lg font-bold text-gray-800" id="recorded-list-title">已录入患者</h2>
     <button onclick="showPage('entry', document.querySelectorAll('.sidebar-item')[2])"
@@ -23,6 +23,6 @@
         <tr><td colspan="7" class="px-5 py-6 text-center text-gray-400">加载中…</td></tr>
       </tbody>
     </table>
-    <div id="recorded-list-footer" class="px-5 py-3 text-xs text-gray-400 border-t border-gray-50">—</div>
+    <div id="recorded-list-footer" class="px-5 py-3 text-xs text-gray-400 border-t border-gray-50">—</div><div class="flex gap-3 p-3"><button id="recorded-prev" onclick="RecordedPage.init(RecordedPage.offset-RecordedPage.limit)" disabled>上一页</button><button id="recorded-next" onclick="RecordedPage.init(RecordedPage.offset+RecordedPage.limit)" disabled>下一页</button></div>
   </div>
 </div>

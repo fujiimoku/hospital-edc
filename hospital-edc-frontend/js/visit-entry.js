@@ -9,8 +9,10 @@ const VisitEntry = {
 
   // 初始化
   init() {
+    if (!document.getElementById('entry-form-area')) return;
     this.setupEventListeners();
     this.setupPageSaveButtons();
+    this.setupProgress();
     this.initializeQuestions();
     this.loadCurrentPatient();
   },
@@ -28,6 +30,53 @@ const VisitEntry = {
     });
   },
 
+  setupProgress() {
+    const area = document.getElementById('entry-form-area');
+    if (!area || area.dataset.progressBound) return;
+    area.dataset.progressBound = '1';
+    const changed = e => {
+      if (!e.target.matches('input,select,textarea')) return;
+      this.markDirty();
+    };
+    area.addEventListener('input', changed);
+    area.addEventListener('change', changed);
+    window.addEventListener('beforeunload', e => {
+      if (this._dirty) { e.preventDefault(); e.returnValue = ''; }
+    });
+  },
+  markDirty() {
+    if (this.currentVisit?.status !== 'draft') return;
+    this._revision = (this._revision || 0) + 1;
+    this._dirty = true;
+    this.updateFormProgress();
+  },
+  updateFormProgress() {
+    document.querySelectorAll('#entry-form-area .tab-panel').forEach(panel => {
+      let badge = panel.querySelector('[data-form-progress]');
+      if (!badge) {
+        badge = document.createElement('p'); badge.dataset.formProgress = '1';
+        badge.className = 'text-sm text-blue-700 mb-3'; panel.prepend(badge);
+      }
+      const answered = new Set();
+      panel.querySelectorAll('input,select,textarea').forEach(el => {
+        if (el.readOnly || ['file','hidden','button'].includes(el.type)) return;
+        const filled = ['radio','checkbox'].includes(el.type) ? el.checked :
+          el.type === 'range' ? el.dataset.answered === '1' : el.value.trim() !== '';
+        if (filled) answered.add(el.name || el.id || el);
+      });
+      const status = this.currentVisit?.status;
+      const state = status === 'locked' ? '已锁定' : status && status !== 'draft' ? '已提交，只读' : this._dirty ? '有修改待保存' : '已保存';
+      badge.textContent = `${answered.size ? '已填 ' + answered.size + ' 项' : '尚未填写'} · ${state}`;
+      const tab = document.querySelector(`[onclick="switchEntryTab('${panel.id.replace('tab-','')}')"]`);
+      if (tab) {
+        let dot = tab.querySelector('[data-progress-dot]');
+        if (!dot) {dot=document.createElement('span');dot.dataset.progressDot='1';tab.appendChild(dot);}
+        dot.textContent = answered.size ? ' ●' : ' ○';
+        tab.title = badge.textContent + '（填写数量仅供参考，不代表质控通过）';
+      }
+    });
+  },
+
   async loadCostPhotos() {
     const visitId = this.currentVisit?.id;
     const patientId = this.currentPatient?.id;
@@ -38,12 +87,15 @@ const VisitEntry = {
     try {
       const result = await api('GET', `/api/patients/${patientId}/images?visit_id=${visitId}`);
       if (this.currentVisit?.id !== visitId || this.currentPatient?.id !== patientId) return;
-      box.innerHTML = (result.items || []).map(item => `<div>${escapeText(item.filename)} <button type="button" data-photo-download onclick="VisitEntry.downloadCostPhoto(${item.id})" class="text-blue-600">下载照片</button></div>`).join('') || '本次访视尚未上传费用照片';
+      const canDelete = this.currentVisit.status === 'draft' && ['main_admin', 'center_admin', 'researcher'].includes(getUser()?.role);
+      if (typeof PhotoPreview !== 'undefined') PhotoPreview.clear(box);
+      box.innerHTML = (result.items || []).map(item => `<div class="border rounded p-3 my-2">${typeof PhotoPreview !== 'undefined' ? PhotoPreview.thumbnail(item) : ''}${escapeText(item.filename)} <button type="button" data-photo-download onclick="VisitEntry.downloadCostPhoto(${item.id})" class="text-blue-600">下载照片</button>${canDelete ? ` <button type="button" onclick="VisitEntry.deleteCostPhoto(${item.id})" class="text-red-600">删除照片</button>` : ''}</div>`).join('') || '本次访视尚未上传费用照片';
+      if (typeof PhotoPreview !== 'undefined') PhotoPreview.load(box, patientId, result.items || []);
     } catch (e) { box.textContent = '照片加载失败：' + e.message; }
   },
 
   async uploadCostPhotos() {
-    if (this._uploadingPhotos) return;
+    if (this._uploadingPhotos || this._deletingPhoto) return;
     if (this.currentVisit?.status !== 'draft') {
       showToast('费用照片需在草稿访视中上传；待审核可先撤回修改，已审核需由总管理员退回更正', 'error');
       return;
@@ -51,30 +103,55 @@ const VisitEntry = {
     const input = document.getElementById('cost-photo-files');
     const files = Array.from(input.files || []);
     if (!files.length) { showToast('请先选择费用照片', 'error'); return; }
+    if (files.some(file => file.size > 15 * 1024 * 1024)) { showToast('每张图片不能超过15MB，请重新选择', 'error'); return; }
     const visitId = this.currentVisit.id;
     const patientId = this.currentPatient.id;
     this._uploadingPhotos = true;
+    input.disabled = true;
     let count = 0;
     try {
       for (const file of files) {
+        document.getElementById('cost-photo-status').textContent = `正在上传 ${count + 1}/${files.length} 张照片…`;
         const form = new FormData();
         form.append('file', file);
         const response = await fetch(API_BASE + `/api/patients/${patientId}/images?visit_id=${visitId}`, {
           method: 'POST', headers: {Authorization: `Bearer ${getToken()}`}, body: form,
         });
-        if (!response.ok) throw new Error((await response.json()).detail || '上传失败');
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          throw new Error(typeof error.detail === 'string' ? error.detail : `上传失败（${response.status}）`);
+        }
         count++;
       }
       if (this.currentVisit?.id === visitId && this.currentPatient?.id === patientId) input.value = '';
       showToast('费用照片已保存，金额可留空');
-    } catch (e) { showToast(`已上传 ${count} 张；${e.message}`, 'error'); }
+    } catch (e) { showToast(`已上传 ${count} 张；${e.message}。请仅重新选择未成功的图片。`, 'error'); }
     finally {
       this._uploadingPhotos = false;
+      input.disabled = false;
+      input.value = '';
       if (this.currentVisit?.id === visitId && this.currentPatient?.id === patientId) {
         document.getElementById('cost-photo-status').textContent = `本次成功上传 ${count} 张照片`;
         await this.loadCostPhotos();
       }
     }
+  },
+
+  async deleteCostPhoto(imageId) {
+    if (this._uploadingPhotos || this._deletingPhoto) return;
+    if (this.currentVisit?.status !== 'draft') { showToast('请先将访视退回草稿再删除照片', 'error'); return; }
+    if (!confirm('确认删除这张费用照片？删除后无法恢复。')) return;
+    const patientId = this.currentPatient.id;
+    const visitId = this.currentVisit.id;
+    this._deletingPhoto = true;
+    try {
+      await api('DELETE', `/api/patients/${patientId}/images/${imageId}`);
+      if (this.currentPatient?.id === patientId && this.currentVisit?.id === visitId) {
+        showToast('照片已删除');
+        await this.loadCostPhotos();
+      }
+    } catch (e) { showToast(e.message, 'error'); }
+    finally { this._deletingPhoto = false; }
   },
 
   async downloadCostPhoto(imageId) {
@@ -92,11 +169,30 @@ const VisitEntry = {
 
   // 加载当前患者
   async loadCurrentPatient() {
+    if (!document.getElementById('entry-form-area')) return;
+    if (this._dirty && this.currentVisit?.status === 'draft') {
+      if (!await this.saveAllForms(true) || this._dirty) return;
+    }
     const generation = ++this._patientGeneration;
     this.stopAutosave();
     if (this._saveQueue) await this._saveQueue;
     if (generation !== this._patientGeneration) return;
-    const patientData = sessionStorage.getItem('currentPatient');
+    const urlPatient = new URLSearchParams(location.search).get('patient');
+    let patientData = sessionStorage.getItem('currentPatient');
+    if (urlPatient) {
+      this.resetEntryState();
+      try {
+        const patient = await api('GET', `/api/patients/${encodeURIComponent(urlPatient)}`);
+        if (generation !== this._patientGeneration) return;
+        patientData = JSON.stringify(patient);
+        sessionStorage.setItem('currentPatient', patientData);
+      } catch(e) {
+        if (generation !== this._patientGeneration) return;
+        this.currentPatient = null;
+        document.getElementById('entry-patient-info').textContent = '无法打开患者：' + e.message;
+        return;
+      }
+    }
     if (patientData) {
       this.currentPatient = JSON.parse(patientData);
       this.updatePatientInfo();
@@ -125,7 +221,7 @@ const VisitEntry = {
     if (infoEl) {
       const genderLabel = { male: '男', female: '女' };
       const gender = genderLabel[this.currentPatient.gender] || this.currentPatient.gender;
-      infoEl.textContent = `${this.currentPatient.name_initials || ''} / ${gender} / ${this.currentPatient.age || '—'}岁`;
+      infoEl.textContent = `${this.currentPatient.full_name || this.currentPatient.name_initials || ''} / ${gender} / ${this.currentPatient.age || '—'}岁`;
     }
   },
 
@@ -149,6 +245,8 @@ const VisitEntry = {
 
   // 清空所有表单字段（避免残留上一个访视/患者已填的数据）
   clearForms() {
+    this._dirty = false;
+    const copySource = document.getElementById('medication-copy-source'); if (copySource) copySource.textContent='';
     this._legacyComorbidityFlags = {};
     document.getElementById('cm-legacy-details')?.classList.add('hidden');
     const area = document.getElementById('entry-form-area');
@@ -203,7 +301,7 @@ const VisitEntry = {
       }).join('');
       // 自动选中最新草稿（或最新一条）；无访视时停留在"请先创建访视"提示。
       // 从质控审计页跳转时（pendingVisitId），优先定位到指定访视
-      const pendingId = parseInt(sessionStorage.getItem('pendingVisitId'));
+      const pendingId = parseInt(new URLSearchParams(location.search).get('visit') || sessionStorage.getItem('pendingVisitId'));
       sessionStorage.removeItem('pendingVisitId');
       const target = (pendingId && visits.find(v => v.id === pendingId))
         || visits.find(v => v.status === 'draft')
@@ -220,6 +318,13 @@ const VisitEntry = {
 
   // 选择访视后加载数据
   async onVisitSelect(visitId) {
+    if (this._dirty && this.currentVisit?.status === 'draft') {
+      const saved = await this.saveAllForms(true);
+      if (!saved || this._dirty) {
+        document.getElementById('entry-visit-select').value=String(this.currentVisit.id);
+        showToast('当前修改尚未保存，请保存成功后切换访视', 'error'); return;
+      }
+    }
     const generation = ++this._visitGeneration;
     const patient = this.currentPatient;
     this.stopAutosave();
@@ -252,6 +357,7 @@ const VisitEntry = {
       if (generation !== this._visitGeneration) return;
       if (visit.status === 'draft') this.startAutosave();
       this.updateEditability();
+      this.updateFormProgress();
       document.getElementById('entry-no-visit-tip').style.display = 'none';
       document.getElementById('entry-form-area').style.display = 'block';
     } catch (e) {
@@ -271,7 +377,7 @@ const VisitEntry = {
         status === 'submitted' ? '本次访视待审核，暂不能新增费用照片。请在页面上方点击“撤回并修改”，填写原因后上传，再重新提交审核。' :
         status ? '本次访视已审核或锁定，暂不能新增费用照片。请联系总管理员退回更正后上传。' : '请先选择或创建访视。';
     }
-    document.querySelectorAll('#entry-form-area input, #entry-form-area select, #entry-form-area textarea, #entry-form-area button:not(.tab-btn):not([data-photo-download])').forEach(el => {
+    document.querySelectorAll('#entry-form-area input, #entry-form-area select, #entry-form-area textarea, #entry-form-area button:not(.tab-btn):not([data-photo-download]):not([data-photo-preview])').forEach(el => {
       if (!editable && !el.disabled) {
         el.dataset.edcReadOnly = '1';
         el.disabled = true;
@@ -722,6 +828,26 @@ const VisitEntry = {
     `).join('');
   },
 
+  async copyPreviousMedications() {
+    if (this._copyingMedications || this.currentVisit?.status !== 'draft') return;
+    const target = this.currentVisit;
+    const before = JSON.stringify(this.collectMedications());
+    this._copyingMedications = true;
+    try {
+      const data = await api('GET', `/api/visits/${target.id}/previous-medications`);
+      if (this.currentVisit !== target) return;
+      if (!data.source_visit) { showToast('该患者没有上一次访视'); return; }
+      if (!data.medications.length) { showToast('上一次访视没有用药记录'); return; }
+      if (JSON.stringify(this.collectMedications()) !== before) { showToast('查询期间用药记录已改变，请重新点击复制', 'error'); return; }
+      if (this.collectMedications().length && !confirm('本次已有用药记录，是否用上一次访视的全部用药替换？')) return;
+      document.getElementById('medication-list').replaceChildren();
+      data.medications.forEach(med => this.addMedication(med));
+      this.markDirty();
+      document.getElementById('medication-copy-source').textContent = `已复制 ${data.source_visit.visit_date} 的用药，包括原有停用状态和日期。请核对后保存本次草稿。`;
+    } catch(e) { showToast(e.message,'error'); }
+    finally { this._copyingMedications = false; }
+  },
+
   // 添加药物
   addMedication(med = {}) {
     const container = document.getElementById('medication-list');
@@ -731,7 +857,7 @@ const VisitEntry = {
     const medDiv = document.createElement('div');
     medDiv.className = 'border border-gray-200 rounded-lg p-4';
     medDiv.innerHTML = `
-      <div class="flex justify-between mb-3"><span>药物 ${index + 1}</span><button onclick="this.closest('.medication-row').remove()" class="text-red-500 text-xs">删除</button></div>
+      <div class="flex justify-between mb-3"><span>药物 ${index + 1}</span><button onclick="this.closest('.medication-row').remove(); VisitEntry.markDirty()" class="text-red-500 text-xs">删除</button></div>
       <div class="grid grid-cols-3 gap-3">
       ${[['treatment_type','治疗类型（糖尿病／高血压／降脂等）','text'],['drug_name','药剂名','text'],['route','给药途径','text'],['dose','用药剂量','text'],['frequency','用药频率（请写完整中文，如每周两次）','text'],['start_date','开始日期','date'],['end_date','结束日期（如有）','date']].map(([key,label,type]) => `<label class="text-xs text-gray-500">${label}<input type="${type}" data-med-field="${key}" value="${escapeText(med[key])}" class="w-full border rounded-lg p-2 text-sm"/></label>`).join('')}
       <label class="text-xs text-gray-500">正在进行<select data-med-field="is_ongoing" class="w-full border rounded-lg p-2"><option value="true">是</option><option value="false">否</option></select></label></div>`;
@@ -1007,7 +1133,7 @@ const VisitEntry = {
   comorbidityFields: ['hypertension','ckd','chd','angina','mi','stroke','dr','dn','df'].flatMap(k => [k, k + '_date']).concat(['hypertension_cause','ckd_cause','other_conditions']),
   comorbidityFlags: ['dr_macular','dr_non_proliferative','dr_proliferative','dn_peripheral','dn_autonomic','df_healed_ulcer','df_active_ulcer'],
   safetyFlags: ['symptomatic','nocturnal','severe','gastrointestinal','allergy'],
-  profileFields: ['age','study_group','study_subgroup','visit_number','enrollment_date','employment_status','education_level','insurance_coverage','smoking_history','smoking_per_day','drinking_history','drinking_per_day'],
+  profileFields: ['full_name','age','study_group','study_subgroup','visit_number','enrollment_date','employment_status','education_level','insurance_coverage','smoking_history','smoking_per_day','drinking_history','drinking_per_day'],
   collectComorbidity() {
     const result = {};
     for (const k of this.comorbidityFields) {
@@ -1033,7 +1159,7 @@ const VisitEntry = {
     const payload = {};
     for (const k of this.profileFields) {
       const raw = document.getElementById('bp-' + k)?.value;
-      payload[k] = raw === '' || raw == null ? null : (['study_group','study_subgroup','visit_number','enrollment_date'].includes(k) ? raw.trim() : Number(raw));
+      payload[k] = raw === '' || raw == null ? null : (['full_name','study_group','study_subgroup','visit_number','enrollment_date'].includes(k) ? raw.trim() : Number(raw));
     }
     try {
       const changes = Object.fromEntries(Object.entries(payload).filter(([k, v]) => (this.currentPatient[k] ?? null) !== v));
@@ -1131,6 +1257,7 @@ const VisitEntry = {
   // ===== 草稿自动保存 =====
   startAutosave() {
     this.stopAutosave();
+    if (!['researcher','center_admin','main_admin'].includes(getUser()?.role)) return;
     this._autosaveTimer = setInterval(() => {
       if (this.currentVisit && this.currentVisit.status === 'draft') {
         this.saveAllForms(false); // 静默保存
@@ -1187,6 +1314,7 @@ const VisitEntry = {
   async _saveAllForms(verbose = true) {
     if (!this.currentVisit || this.currentVisit.status !== 'draft') return false;
     const visitId = this.currentVisit.id;
+    const revision = this._revision || 0;
     const data = this.collectFormData();
     if (!await this.savePatientProfile(verbose)) return false;
     if (this.currentVisit?.id !== visitId) return false;
@@ -1227,6 +1355,8 @@ const VisitEntry = {
       }
     }
     this.showWarnings(allWarnings);
+    if ((this._revision || 0) === revision) this._dirty = false;
+    this.updateFormProgress();
     return true;
   },
 };
@@ -1299,19 +1429,18 @@ async function submitNewVisit() {
 // Tab切换
 function switchEntryTab(tabName) {
   // 更新tab按钮状态
-  document.querySelectorAll('#page-entry .tab-btn').forEach(btn => {
-    btn.classList.remove('active');
+  document.querySelectorAll('#entry-form-area .tab-btn').forEach(btn => {
+    btn.classList.toggle('active', (btn.getAttribute('onclick') || '').includes(`switchEntryTab('${tabName}')`));
   });
-  event.target.classList.add('active');
 
   // 更新tab内容
-  document.querySelectorAll('#page-entry .tab-panel').forEach(panel => {
+  document.querySelectorAll('#entry-form-area .tab-panel').forEach(panel => {
     panel.classList.add('hidden');
   });
   document.getElementById(`tab-${tabName}`).classList.remove('hidden');
 
   // 切换 tab 时静默保存草稿
-  if (VisitEntry.currentVisit && VisitEntry.currentVisit.status === 'draft') {
+  if (VisitEntry.currentVisit?.status === 'draft' && ['researcher','center_admin','main_admin'].includes(getUser()?.role)) {
     VisitEntry.saveAllForms(false);
   }
 }

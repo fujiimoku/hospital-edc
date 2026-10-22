@@ -4,26 +4,14 @@
     <span id="patient-list-title" class="font-semibold text-gray-700">患者列表</span>
     <div class="flex gap-3 items-center flex-wrap">
       <select id="patient-center" aria-label="所属中心" style="display:none" onchange="loadPatients()" class="border rounded-lg p-2 text-sm"><option value="">全部中心</option></select>
+      <select id="patient-tracking" aria-label="追踪筛选" onchange="loadPatients()" class="border rounded-lg p-2 text-sm"><option value="">全部追踪状态</option><option value="pending">待追踪</option><option value="completed">已完成追踪</option></select>
       <select id="patient-sort" aria-label="排序" onchange="loadPatients()" class="border rounded-lg p-2 text-sm"><option value="center">按中心编号排序</option><option value="newest">最新创建在前</option><option value="patient_code">按患者编号排序</option></select>
       <input id="patient-search" type="text" placeholder="搜索患者编号/首字母…" class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-52 focus:outline-none focus:border-blue-400" oninput="onPatientSearch(this.value)"/>
       <button onclick="openCreatePatientModal()" class="bg-blue-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-blue-700 transition">+ 创建患者</button>
     </div>
   </div>
-  <table class="w-full">
-    <thead><tr class="bg-gray-50 text-xs text-gray-500">
-      <th class="px-5 py-3 text-left font-semibold">患者编号</th>
-      <th class="px-4 py-3 text-left font-semibold">姓名首字母</th>
-      <th class="px-4 py-3 text-left font-semibold">性别</th>
-      <th class="px-4 py-3 text-left font-semibold">年龄</th>
-      <th class="px-4 py-3 text-left font-semibold">入组日期</th>
-      <th class="px-4 py-3 text-left font-semibold">研究组别</th>
-      <th class="px-4 py-3 text-left font-semibold">状态</th>
-      <th class="px-4 py-3 text-left font-semibold">医疗费用图片</th><th class="px-4 py-3 text-left font-semibold">操作</th>
-    </tr></thead>
-    <tbody id="patient-table" class="text-sm text-gray-700 divide-y divide-gray-50">
-      <tr><td colspan="9" class="px-5 py-6 text-center text-gray-400 text-sm">加载中…</td></tr>
-    </tbody>
-  </table>
+  <div id="patient-table" class="grid grid-cols-1 xl:grid-cols-2 gap-4 p-4"></div>
+
   <div class="p-3 flex gap-4"><button id="patient-prev" onclick="loadPatients(undefined, Math.max(0, patientOffset - 50))">上一页</button><button id="patient-next" onclick="loadPatients(undefined, patientOffset + 50)">下一页</button></div>
   <div id="patient-list-footer" class="px-5 py-3 text-xs text-gray-400 border-t border-gray-100">—</div>
 </div>

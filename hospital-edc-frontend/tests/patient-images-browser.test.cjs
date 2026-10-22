@@ -16,6 +16,7 @@ async function pageFor(t) {
     '<meta charset="utf-8"><style>.hidden{display:none}</style>' + fs.readFileSync(path.join(root, 'pages/patients.html'), 'utf8')}));
   await page.goto('http://edc.test/');
   await page.addScriptTag({path:path.join(root, 'js/config.js')});
+  await page.addScriptTag({path:path.join(root, 'js/patient-workflow.js')});
   await page.addScriptTag({path:path.join(root, 'js/patients.js')});
   await page.evaluate(() => {
     setToken('synthetic-test-token'); setUser({role:'researcher'});
@@ -61,7 +62,7 @@ test('submitted patient images upload separately and downloads retain Chinese pa
       headers:{'Content-Type':'image/png','Content-Disposition':"attachment; filename*=utf-8''"+encodeURIComponent(filename)}});
     return route.fulfill({json:{items:entries}});
   });
-  assert.equal(await page.getByRole('button',{name:'查看／录入',exact:true}).isEnabled(), true);
+  assert.equal(await page.getByRole('button',{name:'查看／录入（新标签页）',exact:true}).isEnabled(), true);
   await page.getByRole('button',{name:'图片',exact:true}).click();
   await page.getByText('尚未上传图片',{exact:true}).waitFor();
   await page.setInputFiles('#patient-images-files', {name:'test.png', mimeType:'image/png', buffer:Buffer.from('stub image')});
@@ -74,13 +75,13 @@ test('submitted patient images upload separately and downloads retain Chinese pa
   assert.equal(download.suggestedFilename(),filename);
 });
 
-test('QC does not receive image entry; stale image requests do not render for another patient', async t => {
+test('QC can view images; stale image requests do not render for another patient', async t => {
   const page = await pageFor(t);
   await page.evaluate(() => {
     setUser({role:'qc'});
     renderPatientTable([{id:8,patient_code:'QC-1',name_initials:'QC'}],1);
   });
-  assert.equal(await page.getByRole('button',{name:'图片',exact:true}).count(),0);
+  assert.equal(await page.getByRole('button',{name:'图片',exact:true}).count(),1);
   const result = await page.evaluate(async () => {
     setUser({role:'researcher'});
     patientCacheById[1] = {patient_code:'P1'}; patientCacheById[2] = {patient_code:'P2'};
@@ -93,4 +94,64 @@ test('QC does not receive image entry; stale image requests do not render for an
     return document.getElementById('patient-images-modal').textContent;
   });
   assert.match(result,/P2/); assert.doesNotMatch(result,/WRONG-PATIENT/);
+});
+
+test('image deletion requires confirmation, preserves failed rows, and refreshes after success', async t => {
+  const page = await pageFor(t);
+  let entries = [{id:1,filename:'费用照片.png',size_bytes:68}];
+  let deletes = 0;
+  await page.route('http://edc.test/api/patients/7/images**', route => {
+    if (route.request().method() === 'DELETE') {
+      deletes++;
+      if (deletes === 1) return route.fulfill({status:400,json:{detail:'仅草稿访视可删除费用照片，请先退回更正'}});
+      entries = [];
+      return route.fulfill({json:{deleted:true,id:1}});
+    }
+    return route.fulfill({json:{items:entries}});
+  });
+  await page.getByRole('button',{name:'图片',exact:true}).click();
+  const remove = page.getByRole('button',{name:'删除',exact:true});
+  await remove.waitFor();
+  page.once('dialog', dialog => dialog.dismiss());
+  await remove.click();
+  assert.equal(deletes,0);
+  page.once('dialog', dialog => dialog.accept());
+  await remove.click();
+  await page.getByText('仅草稿访视可删除费用照片，请先退回更正',{exact:true}).waitFor();
+  assert.equal(await remove.count(),1);
+  page.once('dialog', dialog => dialog.accept());
+  await remove.click();
+  await page.getByText('尚未上传图片',{exact:true}).waitFor();
+  assert.equal(deletes,2);
+  assert.equal(await page.locator('#patient-images-archive').isDisabled(),true);
+});
+
+test('visit multi-photo upload stays sequential and clears selection after a partial gateway failure', async t => {
+  const page = await pageFor(t);
+  await page.addScriptTag({path:path.join(root,'js/visit-entry.js')});
+  await page.evaluate(() => {
+    window.showToast = message => window.lastToast = message;
+    document.body.insertAdjacentHTML('beforeend','<input id="cost-photo-files" type="file" multiple><p id="cost-photo-status"></p><div id="cost-photo-list"></div>');
+    VisitEntry.currentPatient = {id:7}; VisitEntry.currentVisit = {id:4,status:'draft'};
+  });
+  let uploads = 0, active = 0, peak = 0;
+  await page.route('http://edc.test/api/patients/7/images**', async route => {
+    if (route.request().method() === 'POST') {
+      uploads++; active++; peak = Math.max(peak,active);
+      await new Promise(resolve=>setTimeout(resolve,10));
+      active--;
+      if (uploads === 12) return route.fulfill({status:502,contentType:'text/html',body:'Bad gateway'});
+      return route.fulfill({status:201,json:{id:uploads}});
+    }
+    return route.fulfill({json:{items:[{id:1,filename:'已上传.png',size_bytes:68}]}});
+  });
+  await page.setInputFiles('#cost-photo-files',Array.from({length:20},(_,i)=>({name:`photo-${i}.png`,mimeType:'image/png',buffer:Buffer.from('synthetic')})));
+  await page.evaluate(()=>VisitEntry.uploadCostPhotos());
+  assert.equal(uploads,12); assert.equal(peak,1);
+  assert.equal(await page.locator('#cost-photo-files').inputValue(),'');
+  assert.equal(await page.locator('#cost-photo-files').isEnabled(),true);
+  assert.match(await page.evaluate(()=>window.lastToast),/已上传 11 张.*502.*仅重新选择/);
+  assert.equal(await page.getByRole('button',{name:'删除照片',exact:true}).count(),1);
+  await page.evaluate(async()=>{VisitEntry.currentVisit.status='submitted';await VisitEntry.loadCostPhotos();});
+  assert.equal(await page.getByRole('button',{name:'删除照片',exact:true}).count(),0);
 });
