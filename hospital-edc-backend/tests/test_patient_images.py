@@ -34,6 +34,26 @@ def upload(client, token, pid, data=None, name='photo.png'):
                        files={'file': (name, picture() if data is None else data, 'image/png')})
 
 
+def test_thumbnail_is_private_small_and_preserves_original(client, researcher1_token, researcher2_token, qc1_token):
+    pid = create_patient(client, researcher1_token)['id']
+    source = io.BytesIO()
+    Image.effect_noise((2400, 1800), 60).convert('RGB').save(source, 'JPEG', quality=95)
+    original = source.getvalue()
+    item = upload(client, researcher1_token, pid, original, 'large.jpg').json()
+    url = f"/api/patients/{pid}/images/{item['id']}"
+    assert client.get(url + '/thumbnail').status_code == 401
+    assert client.get(url + '/thumbnail', headers=auth_header(researcher2_token)).status_code == 403
+    preview = client.get(url + '/thumbnail', headers=auth_header(qc1_token))
+    assert preview.status_code == 200
+    assert preview.headers['cache-control'] == 'no-store'
+    assert max(Image.open(io.BytesIO(preview.content)).size) <= 640
+    assert len(preview.content) < len(original) / 10
+    headers = auth_header(researcher1_token)
+    assert client.get(url + '/download', headers=headers).content == original
+    assert client.delete(url, headers=headers).status_code == 200
+    assert client.get(url + '/thumbnail', headers=headers).status_code == 404
+
+
 def test_delete_image_permissions_audit_and_storage(client, researcher1_token, researcher2_token, qc1_token, db):
     patient = create_patient(client, researcher1_token)
     pid = patient['id']
@@ -54,7 +74,7 @@ def test_delete_image_permissions_audit_and_storage(client, researcher1_token, r
     assert client.get(url + '/download', headers=headers).status_code == 404
     assert client.get(f'/api/patients/{pid}/images/archive', headers=headers).status_code == 404
     assert client.delete(url, headers=headers).status_code == 404
-    event = db.query(AuditLog).filter_by(table_name='patient_images', record_id=item['id'], action='delete').one()
+    event = db.query(AuditLog).filter_by(table_name='patient_images', record_id=item['id'], action='delete', old_value=str(pid)).one()
     assert event.old_value == str(pid) and event.new_value is None
 
 

@@ -10,10 +10,10 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, Response
 from starlette.background import BackgroundTask
 from sqlalchemy.orm import Session
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from app.config import settings
 from app.database import get_db
@@ -168,6 +168,25 @@ def download_archive(patient_id: int, db: Session = Depends(get_db), user=Depend
             archive.close()
     return StreamingResponse(chunks(), media_type='application/zip', headers=headers,
                              background=BackgroundTask(archive.close))
+
+
+@router.get("/{image_id}/thumbnail")
+def image_thumbnail(patient_id: int, image_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    patient = get_patient(patient_id, db, user)
+    item = db.query(PatientImage).filter_by(id=image_id, patient_id=patient.id).first()
+    if item is None:
+        raise HTTPException(404, "该患者没有这张图片")
+    # Generated in memory: the uploaded source and its checksum remain unchanged.
+    with Image.open(image_path(item)) as source:
+        source.draft("RGB", (640, 640))
+        preview = ImageOps.exif_transpose(source)
+        preview.thumbnail((640, 640))
+        preview = preview.convert("RGB")
+        output = io.BytesIO()
+        preview.save(output, format="JPEG", quality=75)
+    audit(db, user, patient, item.id, "preview")
+    db.commit()
+    return Response(output.getvalue(), media_type="image/jpeg", headers=PRIVATE_HEADERS)
 
 
 @router.get("/{image_id}/download")

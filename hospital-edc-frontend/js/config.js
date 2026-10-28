@@ -1,10 +1,55 @@
 // API配置
+const OperationFeedback = {
+  active: new Map(), sequence: 0,
+  start(message, selector = '') {
+    const id = ++this.sequence;
+    const buttons = selector ? [...document.querySelectorAll(selector)] : [];
+    const original = buttons.map(button => ({button, disabled:button.disabled, text:button.textContent}));
+    original.forEach(({button}) => {button.disabled=true;button.setAttribute('aria-busy','true');button.textContent=message;});
+    this.active.set(id,message);this.render();
+    return () => {
+      original.forEach(({button,disabled,text}) => {
+        button.textContent=text;button.removeAttribute('aria-busy');
+        button.disabled=disabled || button.dataset.edcReadOnly === '1';
+      });
+      this.active.delete(id);this.render();
+    };
+  },
+  render() {
+    let el=document.getElementById('edc-operation-status');
+    if (!this.active.size) {el?.remove();return;}
+    if (!el) {el=document.createElement('div');el.id='edc-operation-status';el.className='edc-operation-status';el.setAttribute('role','status');document.body.appendChild(el);}
+    el.textContent=[...this.active.values()].join(' · ');
+  },
+};
+
 // 同源部署：默认请求当前源；多实例 Nginx 按路径分发时（如 /project-a/）自动取路径前缀，
 // 这样前端无需为每个实例单独构建。
 const API_BASE = (function () {
   const m = window.location.pathname.match(/^\/(project-[^/]+)\//);
   return m ? m[1] : '';
 })();
+
+// Originals are uploaded without compression; progress distinguishes transfer from server processing.
+function uploadOriginalPhoto(path, file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', API_BASE + path);
+    xhr.setRequestHeader('Authorization', `Bearer ${getToken()}`);
+    xhr.timeout = 180000;
+    xhr.upload.onprogress = event => {
+      if (event.lengthComputable) onProgress(Math.min(100, Math.round(event.loaded * 100 / event.total)));
+    };
+    xhr.onload = () => {
+      let data = {}; try { data = JSON.parse(xhr.responseText); } catch (_) {}
+      if (xhr.status >= 200 && xhr.status < 300) { resolve(data); return; }
+      if (xhr.status === 401) clearToken();
+      reject(new Error(typeof data.detail === 'string' ? data.detail : `上传失败（${xhr.status}）`));
+    };
+    xhr.onerror = xhr.ontimeout = () => reject(new Error('网络中断或响应超时，请先刷新照片列表确认是否上传成功，再重试'));
+    const form = new FormData(); form.append('file', file); xhr.send(form);
+  });
+}
 
 // Token管理
 function getToken() {

@@ -14,6 +14,7 @@ const VisitEntry = {
     this.setupPageSaveButtons();
     this.setupProgress();
     this.initializeQuestions();
+    if (typeof EntryKeyboard !== 'undefined') EntryKeyboard.setup(document.getElementById('entry-form-area'));
     this.loadCurrentPatient();
   },
 
@@ -83,6 +84,7 @@ const VisitEntry = {
     if (!visitId || !patientId) return;
     const box = document.getElementById('cost-photo-list');
     if (!box) return;
+    if (typeof PhotoPreview !== 'undefined') PhotoPreview.clear(box);
     box.textContent = '正在加载照片…';
     try {
       const result = await api('GET', `/api/patients/${patientId}/images?visit_id=${visitId}`);
@@ -107,20 +109,16 @@ const VisitEntry = {
     const visitId = this.currentVisit.id;
     const patientId = this.currentPatient.id;
     this._uploadingPhotos = true;
+    const finish = OperationFeedback.start('正在上传照片…', 'button[onclick="VisitEntry.uploadCostPhotos()"]');
     input.disabled = true;
     let count = 0;
     try {
       for (const file of files) {
         document.getElementById('cost-photo-status').textContent = `正在上传 ${count + 1}/${files.length} 张照片…`;
-        const form = new FormData();
-        form.append('file', file);
-        const response = await fetch(API_BASE + `/api/patients/${patientId}/images?visit_id=${visitId}`, {
-          method: 'POST', headers: {Authorization: `Bearer ${getToken()}`}, body: form,
+        await uploadOriginalPhoto(`/api/patients/${patientId}/images?visit_id=${visitId}`, file, percent => {
+          if (this.currentVisit?.id === visitId && this.currentPatient?.id === patientId)
+            document.getElementById('cost-photo-status').textContent = `正在上传 ${count + 1}/${files.length} 张：${percent}%${percent === 100 ? '，服务器校验保存中…' : ''}`;
         });
-        if (!response.ok) {
-          const error = await response.json().catch(() => ({}));
-          throw new Error(typeof error.detail === 'string' ? error.detail : `上传失败（${response.status}）`);
-        }
         count++;
       }
       if (this.currentVisit?.id === visitId && this.currentPatient?.id === patientId) input.value = '';
@@ -128,6 +126,7 @@ const VisitEntry = {
     } catch (e) { showToast(`已上传 ${count} 张；${e.message}。请仅重新选择未成功的图片。`, 'error'); }
     finally {
       this._uploadingPhotos = false;
+      finish();
       input.disabled = false;
       input.value = '';
       if (this.currentVisit?.id === visitId && this.currentPatient?.id === patientId) {
@@ -144,6 +143,7 @@ const VisitEntry = {
     const patientId = this.currentPatient.id;
     const visitId = this.currentVisit.id;
     this._deletingPhoto = true;
+    const finish = OperationFeedback.start('正在删除照片…', '#cost-photo-list button');
     try {
       await api('DELETE', `/api/patients/${patientId}/images/${imageId}`);
       if (this.currentPatient?.id === patientId && this.currentVisit?.id === visitId) {
@@ -151,7 +151,7 @@ const VisitEntry = {
         await this.loadCostPhotos();
       }
     } catch (e) { showToast(e.message, 'error'); }
-    finally { this._deletingPhoto = false; }
+    finally { this._deletingPhoto = false; finish(); }
   },
 
   async downloadCostPhoto(imageId) {
@@ -245,6 +245,7 @@ const VisitEntry = {
 
   // 清空所有表单字段（避免残留上一个访视/患者已填的数据）
   clearForms() {
+    this._savedPayloads = new Map();
     this._dirty = false;
     const copySource = document.getElementById('medication-copy-source'); if (copySource) copySource.textContent='';
     this._legacyComorbidityFlags = {};
@@ -378,7 +379,7 @@ const VisitEntry = {
         status ? '本次访视已审核或锁定，暂不能新增费用照片。请联系总管理员退回更正后上传。' : '请先选择或创建访视。';
     }
     document.querySelectorAll('#entry-form-area input, #entry-form-area select, #entry-form-area textarea, #entry-form-area button:not(.tab-btn):not([data-photo-download]):not([data-photo-preview])').forEach(el => {
-      if (!editable && !el.disabled) {
+      if (!editable && (!el.disabled || el.hasAttribute('aria-busy'))) {
         el.dataset.edcReadOnly = '1';
         el.disabled = true;
       } else if (editable && el.dataset.edcReadOnly === '1') {
@@ -1314,6 +1315,15 @@ const VisitEntry = {
   async _saveAllForms(verbose = true) {
     if (!this.currentVisit || this.currentVisit.status !== 'draft') return false;
     const visitId = this.currentVisit.id;
+    if (this._savedVisitId !== visitId) { this._savedPayloads = new Map(); this._savedVisitId = visitId; }
+    const saved = this._savedPayloads ||= new Map();
+    const postChanged = async (key, endpoint, payload) => {
+      const signature = JSON.stringify(payload);
+      if (saved.get(key)?.signature === signature) return saved.get(key).result;
+      const result = await api('POST', `/api/visits/${visitId}/${endpoint}`, payload);
+      saved.set(key, {signature, result});
+      return result;
+    };
     const revision = this._revision || 0;
     const data = this.collectFormData();
     if (!await this.savePatientProfile(verbose)) return false;
@@ -1330,7 +1340,7 @@ const VisitEntry = {
     ];
     for (const [endpoint, payload] of tasks) {
       try {
-        const res = await api('POST', `/api/visits/${visitId}/${endpoint}`, payload);
+        const res = await postChanged(endpoint, endpoint, payload);
         if (res.warnings) allWarnings.push(...res.warnings);
       } catch (e) {
         if (verbose) showToast(`${endpoint} 保存失败：${e.message}`, 'error');
@@ -1343,7 +1353,7 @@ const VisitEntry = {
       const payload = data.questionnaires[qType];
       if ((['phq9', 'gad7'].includes(qType) && this._loadedQuestionnaires?.has(qType)) || Object.entries(payload).some(([k, v]) => k !== 'crf_version' && v !== null && v !== undefined)) {
         try {
-          await api('POST', `/api/visits/${visitId}/questionnaire`, {
+          await postChanged(qType, 'questionnaire', {
             questionnaire_type: qType,
             ...payload,
           });
@@ -1438,6 +1448,7 @@ function switchEntryTab(tabName) {
     panel.classList.add('hidden');
   });
   document.getElementById(`tab-${tabName}`).classList.remove('hidden');
+  if (typeof EntryKeyboard !== 'undefined') EntryKeyboard.focus(document.getElementById(`tab-${tabName}`));
 
   // 切换 tab 时静默保存草稿
   if (VisitEntry.currentVisit?.status === 'draft' && ['researcher','center_admin','main_admin'].includes(getUser()?.role)) {
@@ -1449,6 +1460,7 @@ function switchEntryTab(tabName) {
 async function saveVisitData(status) {
   if (VisitEntry._savingVisit) return;
   VisitEntry._savingVisit = true;
+  const finish = OperationFeedback.start(status === 'submitted' ? '正在保存并提交…' : '正在保存…', '#entry-form-area [data-page-save], #entry-form-area button[onclick^="saveVisitData"]');
   const targetVisit = VisitEntry.currentVisit;
   try {
     if (!VisitEntry.currentVisit) {
@@ -1474,6 +1486,7 @@ async function saveVisitData(status) {
     if (VisitEntry.currentVisit !== targetVisit) return;
 
     if (status === 'submitted') {
+      if (VisitEntry._dirty) { showToast('保存期间有新修改，请再次提交以保存最新内容', 'error'); return; }
       await api('POST', `/api/visits/${targetVisit.id}/submit`);
       targetVisit.status = 'submitted';
       if (VisitEntry.currentVisit !== targetVisit) return;
@@ -1491,6 +1504,7 @@ async function saveVisitData(status) {
     showToast('保存失败：' + error.message, 'error');
   } finally {
     VisitEntry._savingVisit = false;
+    finish();
   }
 }
 

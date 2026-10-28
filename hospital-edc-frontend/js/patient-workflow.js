@@ -41,18 +41,41 @@ const PhotoPreview = {
   },
   async load(container, patientId, items) {
     const token=getToken();
-    await Promise.all(items.map(async item => {
+    const queue = [...items];
+    const loadOne = async item => {
       const img=container.querySelector(`[data-private-image="${item.id}"]`);
       if (!img) return;
       try {
-        const response=await fetch(API_BASE+`/api/patients/${patientId}/images/${item.id}/download`, {headers:{Authorization:`Bearer ${token}`}});
+        const response=await fetch(API_BASE+`/api/patients/${patientId}/images/${item.id}/thumbnail`, {headers:{Authorization:`Bearer ${token}`}});
         if (!response.ok) throw new Error('预览失败');
         const blob=await response.blob();
         if (!img.isConnected || token!==getToken()) return;
         const url=URL.createObjectURL(blob);this.urls.add(url);img.src=url;
-        img.onclick=()=>this.show(url,item.filename);
+        img.onclick=()=>this.showOriginal(patientId,item);
       } catch(e) { if (img.isConnected) img.alt='预览失败，可重试或下载查看'; }
+    };
+    await Promise.all(Array.from({length:Math.min(3,queue.length)}, async()=>{
+      while(queue.length) await loadOne(queue.shift());
     }));
+  },
+  async showOriginal(patientId, item) {
+    const dialog=document.createElement('dialog');
+    dialog.className='rounded-xl p-4 max-w-5xl w-full';
+    dialog.innerHTML='<button type="button" class="float-right p-2">关闭</button><p></p><div role="status">正在加载原图…</div><img class="max-h-screen mx-auto" alt="费用照片大图">';
+    dialog.querySelector('p').textContent=item.filename;
+    const controller=new AbortController(), token=getToken();
+    let url;
+    dialog.querySelector('button').onclick=()=>dialog.close();
+    dialog.addEventListener('close',()=>{controller.abort();if(url) URL.revokeObjectURL(url);dialog.remove();},{once:true});
+    document.body.appendChild(dialog);dialog.showModal();
+    try {
+      const response=await fetch(API_BASE+`/api/patients/${patientId}/images/${item.id}/download`,{headers:{Authorization:`Bearer ${token}`},signal:controller.signal});
+      if(!response.ok) throw new Error('原图加载失败，请关闭后重试');
+      const blob=await response.blob();
+      if(!dialog.isConnected || token!==getToken()) return;
+      url=URL.createObjectURL(blob);dialog.querySelector('img').src=url;
+      dialog.querySelector('[role="status"]').textContent='';
+    } catch(e) {if(dialog.isConnected) dialog.querySelector('[role="status"]').textContent=e.message;}
   },
   show(url, filename) {
     const dialog=document.createElement('dialog');

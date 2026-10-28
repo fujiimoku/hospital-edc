@@ -208,11 +208,15 @@ const ReviewPage = {
   },
 
   async visitAction(visitId, path, okMsg) {
+    if (this._actionBusy) return;
+    this._actionBusy = true;
+    const finish = OperationFeedback.start('正在处理，请稍候…', '#review-visit-list button');
     try {
       await api('POST', `/api/visits/${visitId}/${path}`);
       showToast(okMsg, 'success');
       await this.refresh();
     } catch (e) { showToast(e.message || '操作失败', 'error'); }
+    finally { this._actionBusy = false; finish(); }
   },
 
   // ── 提质疑模态框 ───────────────────────

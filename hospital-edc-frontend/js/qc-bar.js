@@ -76,12 +76,15 @@ const QcBar = {
   // ── 按钮动作 ─────────────────────────────
   async _visitAction(path, okMsg, body) {
     const visit = VisitEntry.currentVisit;
-    if (!visit) return;
+    if (!visit || this._actionBusy) return;
+    this._actionBusy = true;
+    const finish = OperationFeedback.start('正在处理，请稍候…', '#entry-qc-bar button');
     try {
       await api('POST', `/api/visits/${visit.id}/${path}`, body);
       showToast(okMsg, 'success');
-      await VisitEntry.onVisitSelect(visit.id);   // 重新拉状态（会触发 refresh）
+      if (VisitEntry.currentVisit?.id === visit.id) await VisitEntry.onVisitSelect(visit.id);
     } catch (e) { showToast(e.message || '操作失败', 'error'); }
+    finally { this._actionBusy = false; finish(); }
   },
   qcPass() { this._visitAction('qc-review', '质控审核通过'); },
   sign()   { this._visitAction('sign', '已签名确认'); },
@@ -128,7 +131,7 @@ const QcBar = {
     if (VisitEntry.currentVisit?.id !== target.visitId) { error.textContent = '当前访视已切换，请关闭窗口后重新操作'; return; }
     const button = document.getElementById('correction-submit');
     this._reasonBusy = true;
-    button.disabled = true;
+    const finish = OperationFeedback.start('正在退回草稿…', '#correction-submit');
     error.textContent = '';
     try {
       await api('POST', `/api/visits/${target.visitId}/${target.path}`, {reason});
@@ -137,7 +140,7 @@ const QcBar = {
       showToast('已回到草稿，可直接修改，完成后请重新提交审核', 'success');
       if (VisitEntry.currentVisit?.id === target.visitId) await VisitEntry.onVisitSelect(target.visitId);
     } catch (e) { error.textContent = e.message || '操作失败，请重试'; }
-    finally { this._reasonBusy = false; button.disabled = false; }
+    finally { this._reasonBusy = false; finish(); }
   },
 
   // ── 质疑：提起 / 答复 / 关闭 ─────────────

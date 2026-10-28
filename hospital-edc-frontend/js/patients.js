@@ -68,12 +68,12 @@ const PatientImages = {
     const id = this.patientId;
     this.busy = true;
     input.disabled = true;
+    const finish = OperationFeedback.start('正在上传照片…', '#patient-images-upload');
     let completed = 0;
     try {
       for (const file of files) {
         this.status(`正在上传 ${completed + 1}/${files.length}…`);
-        const form = new FormData(); form.append('file', file);
-        await this.request(`/api/patients/${id}/images`, {method: 'POST', body: form});
+        await uploadOriginalPhoto(`/api/patients/${id}/images`, file, percent => this.status(`正在上传 ${completed + 1}/${files.length}：${percent}%${percent === 100 ? '，服务器校验保存中…' : ''}`));
         completed++;
       }
       this.status(`已上传 ${completed} 张图片`);
@@ -82,7 +82,7 @@ const PatientImages = {
       this.status(`已成功上传 ${completed} 张；${error.message}。请仅重新选择未成功的图片。`);
       input.value = '';
     } finally {
-      this.busy = false; input.disabled = false;
+      this.busy = false; input.disabled = false; finish();
       await this.refresh(id);
     }
   },
@@ -91,12 +91,13 @@ const PatientImages = {
     const id = this.patientId;
     this.busy = true;
     this.status('正在删除…');
+    const finish = OperationFeedback.start('正在删除照片…', '#patient-images-list button');
     try {
       await this.request(`/api/patients/${id}/images/${imageId}`, {method: 'DELETE'});
       this.status('图片已删除');
       await this.refresh(id);
     } catch (error) { this.status(error.message); }
-    finally { this.busy = false; }
+    finally { this.busy = false; finish(); }
   },
   async download(suffix) {
     if (this.busy) return;
@@ -304,17 +305,40 @@ async function submitCreatePatient() {
 
 // Toast提示函数
 function showToast(message, type = 'success') {
-  // 创建toast元素
+  let stack = document.getElementById('edc-toast-stack');
+  if (!stack) {
+    stack = document.createElement('div');
+    stack.id = 'edc-toast-stack';
+    document.body.appendChild(stack);
+  }
   const toast = document.createElement('div');
-  const cls = type === 'error' ? 'bg-red-500' : 'bg-green-500';
-  toast.className = `fixed top-4 right-4 ${cls} text-white px-4 py-2 rounded-lg shadow-lg z-50`;
-  toast.textContent = message;
-  document.body.appendChild(toast);
-
-  // 3秒后自动消失
-  setTimeout(() => {
+  const isError = type === 'error';
+  toast.className = isError ? 'edc-toast-error bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg' : 'edc-toast-success';
+  toast.setAttribute('role', isError ? 'alert' : 'status');
+  if (isError) {
+    toast.textContent = message;
+  } else {
+    const icon = document.createElement('span');
+    icon.className = 'edc-toast-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = 'i';
+    const content = document.createElement('span');
+    content.className = 'edc-toast-message';
+    content.textContent = message;
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'edc-toast-close';
+    close.setAttribute('aria-label', '关闭提示');
+    close.textContent = '×';
+    close.onclick = () => { clearTimeout(timer); dismiss(); };
+    toast.append(icon, content, close);
+  }
+  stack.appendChild(toast);
+  const dismiss = () => {
     toast.remove();
-  }, 3000);
+    if (!stack.children.length) stack.remove();
+  };
+  const timer = setTimeout(dismiss, isError ? 3000 : 5000);
 }
 
 async function setupPatientCenters() {
