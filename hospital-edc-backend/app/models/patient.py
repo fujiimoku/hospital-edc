@@ -32,6 +32,7 @@ class Patient(Base):
     gender = Column(Enum("male", "female"), nullable=False)
     age = Column(Integer)
     visit_number = Column(String(50))         # 就诊号
+    edc_project_number = Column(String(50), nullable=True)  # 人工填写的项目编号
 
     # 婚姻状况：1未婚 2已婚 3离异 4丧偶
     marital_status = Column(Integer)

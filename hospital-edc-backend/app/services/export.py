@@ -8,6 +8,7 @@
 - to_excel / to_csv_zip  多 sheet Excel / CSV 打包
 """
 import io
+import re
 import zipfile
 from datetime import date, datetime
 
@@ -65,6 +66,7 @@ def build_patient_table(db: Session, center_ids, deidentify: bool = True,
         id_card = decrypt(p.id_card_encrypted)
         rows.append({
             "patient_code": p.patient_code,
+            "edc_project_number": p.edc_project_number,
             "center_code": p.center_code,
             "study_group": p.study_group,
             "study_subgroup": p.study_subgroup,
@@ -136,6 +138,7 @@ def build_visit_wide_table(db: Session, center_ids, status_filter=None,
 
         rows.append({
             "patient_code": v.patient.patient_code,
+            "edc_project_number": v.patient.edc_project_number,
             "center_code": v.patient.center_code,
             "study_group": v.patient.study_group,
             "study_subgroup": v.patient.study_subgroup,
@@ -200,6 +203,7 @@ def build_medication_table(db: Session, center_ids, visit_status=None) -> pd.Dat
     for m in q.order_by(Patient.patient_code, Visit.visit_date).all():
         rows.append({
             "patient_code": m.visit.patient.patient_code,
+            "edc_project_number": m.visit.patient.edc_project_number,
             "center_code": m.visit.patient.center_code,
             "visit_type": m.visit.visit_type,
             "visit_date": m.visit.visit_date,
@@ -224,6 +228,7 @@ def build_ae_table(db: Session, center_ids) -> pd.DataFrame:
     for ae in q.order_by(Patient.patient_code, AdverseEvent.onset_date).all():
         rows.append({
             "patient_code": ae.patient.patient_code,
+            "edc_project_number": ae.patient.edc_project_number,
             "center_code": ae.patient.center_code,
             "term": ae.term,
             "onset_date": ae.onset_date,
@@ -367,21 +372,37 @@ def build_data_dictionary() -> pd.DataFrame:
     add("不良事件表", "action_taken", "采取的措施", "字符串")
     add("不良事件表", "description", "事件描述", "文本")
 
+    for sheet in ("患者主表", "访视宽表", "用药表", "不良事件表"):
+        add(sheet, "edc_project_number", "EDC 项目编号（人工填写，未填为空）", "字符串")
     return pd.DataFrame(D)
 
 
 # ── 输出格式 ─────────────────────────────────────────
 
 def build_all_tables(db: Session, center_ids, deidentify: bool = True,
-                     status_filter=None, visit_status=None) -> dict:
+                     status_filter=None, visit_status=None, sort_by='patient_code') -> dict:
     """构建全部导出表。"""
-    return {
+    tables = {
         "患者主表": build_patient_table(db, center_ids, deidentify, status_filter),
         "访视宽表": build_visit_wide_table(db, center_ids, status_filter, visit_status),
         "用药表": build_medication_table(db, center_ids, visit_status),
         "不良事件表": build_ae_table(db, center_ids),
         "数据字典": build_data_dictionary(),
     }
+    if sort_by == 'edc_project_number':
+        for name, frame in tables.items():
+            if frame.empty or 'edc_project_number' not in frame.columns:
+                continue
+            # Natural ordering: EDC2 precedes EDC10; preserve visit/date ordering within a patient.
+            def key(index):
+                row = frame.iloc[index]
+                value = row['edc_project_number']
+                number = '' if pd.isna(value) else str(value).strip()
+                parts = tuple((1, int(part)) if part.isdigit() else (0, part.casefold())
+                              for part in re.split(r'(\d+)', number))
+                return (not bool(number), parts, row['patient_code'])
+            tables[name] = frame.iloc[sorted(range(len(frame)), key=key)].reset_index(drop=True)
+    return tables
 
 
 def to_excel(tables: dict) -> bytes:

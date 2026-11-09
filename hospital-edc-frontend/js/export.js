@@ -35,6 +35,7 @@ const ExportPage = {
     const params = new URLSearchParams();
     params.set('format', document.getElementById('export-format').value);
     params.set('deidentify', 'true');
+    params.set('sort', document.getElementById('export-sort')?.value || 'patient_code');
     const status = document.getElementById('export-status').value;
     if (status) params.set('status', status);
     const visitStatus = document.getElementById('export-visit-status').value;

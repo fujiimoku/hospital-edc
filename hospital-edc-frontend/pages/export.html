@@ -34,6 +34,13 @@
           <option value="locked">已锁定</option>
         </select>
       </div>
+      <div>
+        <label for="export-sort" class="text-xs font-medium text-gray-600 block mb-1.5">排序方式</label>
+        <select id="export-sort" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+          <option value="patient_code">系统患者编号</option>
+          <option value="edc_project_number">EDC 项目编号（升序，未填写的排最后）</option>
+        </select>
+      </div>
       <div id="export-center-wrap" style="display:none;">
         <label class="text-xs font-medium text-gray-600 block mb-1.5">中心范围（仅总中心可选）</label>
         <label class="block text-sm mb-2"><input id="export-all-centers" type="checkbox" checked onchange="ExportPage.toggleCenters()"> 全部中心</label>

@@ -45,7 +45,7 @@ const EntryKeyboard = {
     area.dataset.keyboardBound = '1';
     const hint = document.createElement('p');
     hint.className = 'text-sm text-blue-700 mb-3';
-    hint.textContent = '键盘录入：回车确认并进入下一项；方向键调整量表选项。蓝框仅表示焦点，不代表已作答。多行文字用 Ctrl+回车进入下一项。';
+    hint.textContent = '键盘录入：回车确认并进入下一项；方向键调整量表选项。新问卷已预选默认答案，请核对后保存；蓝框表示键盘焦点。多行文字用 Ctrl+回车进入下一项。';
     area.prepend(hint);
     area.addEventListener('keydown', e => {
       if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229 || e.repeat || e.altKey || e.metaKey) return;

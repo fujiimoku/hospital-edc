@@ -198,6 +198,7 @@ function renderPatientTable(items, total) {
     return `<article class="relative border border-gray-200 rounded-xl p-4 bg-white shadow-sm" data-patient-id="${p.id}">
       ${patientBadges(p)}
       <button onclick="selectPatient(${p.id})" class="text-blue-700 text-lg font-semibold my-3">${escapeText(p.full_name || p.name_initials || '未填写姓名')} · ${escapeText(p.patient_code)}</button>
+      ${p.edc_project_number ? `<p class="text-sm text-gray-500">EDC 项目编号：${escapeText(p.edc_project_number)}</p>` : ''}
       <p class="text-sm text-gray-500">${escapeText(p.center_name || p.center_code || '')} · ${escapeText(gender)} · ${p.age ?? '—'}岁</p>
       <p class="text-sm my-2">入组：${escapeText(enroll)} · ${escapeText(statusTxt)}</p>
       <p class="text-sm">${escapeText(STUDY_GROUP_LABELS[p.study_group] || '未分组')} · ${escapeText(STUDY_SUBGROUP_LABELS[p.study_subgroup] || '细分组待确认')}</p>
@@ -244,7 +245,7 @@ function closeCreatePatientModal() {
   document.getElementById('modal-create-patient').classList.add('hidden');
   document.getElementById('cp-error').textContent = '';
   // 清空表单
-  ['cp-initials', 'cp-fullname', 'cp-idcard', 'cp-phone', 'cp-gender', 'cp-age', 'cp-marital', 'cp-enroll', 'cp-group', 'cp-subgroup'].forEach(id => {
+  ['cp-project-number', 'cp-initials', 'cp-fullname', 'cp-idcard', 'cp-phone', 'cp-gender', 'cp-age', 'cp-marital', 'cp-enroll', 'cp-group', 'cp-subgroup'].forEach(id => {
     document.getElementById(id).value = '';
   });
 }
@@ -277,6 +278,7 @@ async function submitCreatePatient() {
 
   try {
     const payload = {
+      edc_project_number: document.getElementById('cp-project-number').value.trim() || null,
       study_group: document.getElementById('cp-group').value || null,
       study_subgroup: document.getElementById('cp-subgroup').value || null,
       name_initials: initials,

@@ -164,3 +164,56 @@ test('date correction retains unsaved fields and draft deletion reloads visits',
  });
  assert.deepEqual(result,{date:'2026-11-09',dirty:true,height:'170',canceled:0,reloaded:true,deleted:1});
 });
+
+
+test('new questionnaires default to requested answers and saved partial answers stay intact', async t => {
+  const page = await entryPage(t);
+  const result = await page.evaluate(async () => {
+    window.getUser = () => ({role: 'researcher'});
+    VisitEntry._visitGeneration = 1;
+    window.api = async () => ({});
+    await VisitEntry.loadVisitForms(1, 1);
+    const defaults = Object.fromEntries(['eq5d','dtsq','phq9','gad7'].map(type =>
+      [type, [...document.querySelectorAll(`#${type}-questions input:checked`)].map(el => el.value)]));
+    const vasAnswered = document.getElementById('eq5d-vas').dataset.answered;
+    const openText = document.getElementById('dtsq-open-text').value;
+    const dirty = VisitEntry._dirty;
+    VisitEntry.savePatientProfile = async () => true;
+    const saved = {};
+    window.api = async (method, url, payload) => {
+      if (url.endsWith('/questionnaire')) saved[payload.questionnaire_type] = payload;
+      return {};
+    };
+    await VisitEntry.saveAllForms(false);
+    VisitEntry.clearForms();
+    window.api = async () => ({questionnaires: saved});
+    await VisitEntry.loadVisitForms(1, 1);
+    const reloaded = VisitEntry.collectFormData().questionnaires.dtsq;
+    VisitEntry.clearForms();
+    window.api = async () => ({questionnaires: {dtsq: {crf_version: 1, q1: 2}, phq9: {q1: 3},
+      gad7: {q1: 1}, eq5d: {eq_mobility: 4}}});
+    await VisitEntry.loadVisitForms(1, 1);
+    const partial = Object.fromEntries(['eq5d','dtsq','phq9','gad7'].map(type =>
+      [type, [...document.querySelectorAll(`#${type}-questions input:checked`)].map(el => el.value)]));
+    VisitEntry.clearForms();
+    VisitEntry.currentVisit.status = 'signed';
+    window.api = async () => ({});
+    await VisitEntry.loadVisitForms(1, 1);
+    const readonly = document.querySelectorAll('#entry-form-area input[type=radio]:checked').length;
+    VisitEntry.currentVisit.status = 'draft';
+    window.getUser = () => ({role: 'qc'});
+    await VisitEntry.loadVisitForms(1, 1);
+    return {defaults, dirty, vasAnswered, openText, saved, reloaded, partial, readonly,
+      qc: document.querySelectorAll('#entry-form-area input[type=radio]:checked').length};
+  });
+  assert.deepEqual(result.defaults, {eq5d:Array(5).fill('1'), dtsq:Array(9).fill('5'), phq9:Array(9).fill('0'), gad7:Array(7).fill('0')});
+  assert.equal(result.dirty, true);
+  assert.notEqual(result.vasAnswered, '1');
+  assert.equal(result.openText, '');
+  assert.equal(result.saved.phq9.q1, 0);
+  assert.equal(result.saved.dtsq.q9, 5);
+  assert.equal(result.reloaded.q1, 5);
+  assert.deepEqual(result.partial, {eq5d:['4'], dtsq:['2'], phq9:['3'], gad7:['1']});
+  assert.equal(result.readonly, 0);
+  assert.equal(result.qc, 0);
+});

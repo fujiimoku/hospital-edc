@@ -21,6 +21,7 @@ def export_data(
     visit_status: Optional[str] = Query(None, description="访视状态过滤：locked/signed/…（默认不过滤）"),
     center_id: Optional[int] = Query(None, description="限定中心（总中心可用）"),
     selected_centers: Optional[List[int]] = Query(None, description="选择一个或多个中心"),
+    sort: str = Query('patient_code', pattern='^(patient_code|edc_project_number)$'),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -54,13 +55,14 @@ def export_data(
     tables = export_service.build_all_tables(
         db, center_ids, deidentify=deidentify,
         status_filter=status, visit_status=visit_statuses,
+        sort_by=sort,
     )
 
     # 审计：记录导出范围/是否含隐私字段/操作人
     scope = "全部中心" if center_ids is None else f"中心{center_ids}"
     log_action(db, current_user, "exports", 0, "export",
                f"格式={format} 脱敏={deidentify} 范围={scope} "
-               f"入组状态={status or '全部'} 访视状态={visit_status or '全部'}")
+               f"入组状态={status or '全部'} 访视状态={visit_status or '全部'} 排序={sort}")
     db.commit()
 
     stamp = date.today().strftime("%Y%m%d")

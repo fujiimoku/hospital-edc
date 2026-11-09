@@ -1,10 +1,19 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Literal
 from app.study import StudyGroup, StudySubgroup
 from datetime import date, datetime
 
 
-class PatientCreate(BaseModel):
+class ProjectNumberFields(BaseModel):
+    edc_project_number: Optional[str] = Field(default=None, max_length=50)
+
+    @field_validator('edc_project_number', mode='before')
+    @classmethod
+    def normalize_project_number(cls, value):
+        return (value.strip() or None) if isinstance(value, str) else value
+
+
+class PatientCreate(ProjectNumberFields):
     study_subgroup: Optional[StudySubgroup] = None
     study_group: Optional[StudyGroup] = None
     smoking_history: Optional[Literal[1, 2]] = None
@@ -32,7 +41,7 @@ class PatientCreate(BaseModel):
     enrollment_date: Optional[date] = None
 
 
-class PatientUpdate(BaseModel):
+class PatientUpdate(ProjectNumberFields):
     study_subgroup: Optional[StudySubgroup] = None
     study_group: Optional[StudyGroup] = None
     smoking_history: Optional[Literal[1, 2]] = None
@@ -67,6 +76,7 @@ class PatientTrackingIn(BaseModel):
 
 
 class PatientOut(BaseModel):
+    edc_project_number: Optional[str] = None
     tracking_status: Literal["pending", "completed"] = "pending"
     has_approved: bool = False
     open_queries: int = 0

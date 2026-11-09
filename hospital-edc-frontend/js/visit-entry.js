@@ -452,9 +452,31 @@ const VisitEntry = {
       const data = await api('GET', `/api/visits/${visitId}/all-forms`);
       if (generation !== this._visitGeneration || this.currentVisit?.id !== Number(visitId)) return;
       this.fillForms(data);
+      this.applyNewQuestionnaireDefaults();
     } catch (e) {
       console.error('加载表单数据失败:', e);
       throw e;
+    }
+  },
+
+  // Only initialize questionnaires absent from the server, never fill gaps in saved answers.
+  applyNewQuestionnaireDefaults() {
+    if (this.currentVisit?.status !== 'draft' ||
+        !['researcher', 'center_admin', 'main_admin'].includes(getUser()?.role) ||
+        !this._loadedQuestionnaires) return;
+    let changed = false;
+    for (const [type, count, value] of [['eq5d', 5, 1], ['dtsq', 9, 5], ['phq9', 9, 0], ['gad7', 7, 0]]) {
+      if (this._loadedQuestionnaires.has(type)) continue;
+      for (let i = 0; i < count; i++) {
+        const name = `${type}-q${i}`;
+        if (document.querySelector(`input[name="${name}"]:checked`)) continue;
+        this.setRadio(name, value);
+        changed = true;
+      }
+    }
+    if (changed) {
+      this.calculatePHQ9(); this.calculateGAD7(); this.calculateDTSQ();
+      this.markDirty();
     }
   },
 
@@ -1175,7 +1197,7 @@ const VisitEntry = {
   comorbidityFields: ['hypertension','ckd','chd','angina','mi','stroke','dr','dn','df'].flatMap(k => [k, k + '_date']).concat(['hypertension_cause','ckd_cause','other_conditions']),
   comorbidityFlags: ['dr_macular','dr_non_proliferative','dr_proliferative','dn_peripheral','dn_autonomic','df_healed_ulcer','df_active_ulcer'],
   safetyFlags: ['symptomatic','nocturnal','severe','gastrointestinal','allergy'],
-  profileFields: ['full_name','age','study_group','study_subgroup','visit_number','enrollment_date','employment_status','education_level','insurance_coverage','smoking_history','smoking_per_day','drinking_history','drinking_per_day'],
+  profileFields: ['full_name','age','study_group','study_subgroup','visit_number','edc_project_number','enrollment_date','employment_status','education_level','insurance_coverage','smoking_history','smoking_per_day','drinking_history','drinking_per_day'],
   collectComorbidity() {
     const result = {};
     for (const k of this.comorbidityFields) {
@@ -1201,7 +1223,7 @@ const VisitEntry = {
     const payload = {};
     for (const k of this.profileFields) {
       const raw = document.getElementById('bp-' + k)?.value;
-      payload[k] = raw === '' || raw == null ? null : (['full_name','study_group','study_subgroup','visit_number','enrollment_date'].includes(k) ? raw.trim() : Number(raw));
+      payload[k] = raw === '' || raw == null ? null : (['full_name','study_group','study_subgroup','visit_number','edc_project_number','enrollment_date'].includes(k) ? raw.trim() : Number(raw));
     }
     try {
       const changes = Object.fromEntries(Object.entries(payload).filter(([k, v]) => (this.currentPatient[k] ?? null) !== v));
