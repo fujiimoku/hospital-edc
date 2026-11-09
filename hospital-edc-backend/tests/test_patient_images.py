@@ -204,7 +204,7 @@ def test_subgroups_all_twelve_combinations_validation_lock_export_and_counts(cli
     for group, options in GROUP_SUBGROUPS.items():
         assert row['groups'][group] == 3
         assert [row['subgroups'][group][k] for k in options] == [1, 1, 1]
-    assert STUDY_GROUPS['usual_daily'] == 'D组：常规诊疗+周制剂'
+    assert STUDY_GROUPS['usual_daily'] == 'D组：常规+日制剂'
 
 
 def test_additive_migration_is_repeatable_and_preserves_old_rows():

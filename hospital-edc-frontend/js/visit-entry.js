@@ -8,6 +8,44 @@ const VisitEntry = {
   _visitGeneration: 0,
 
   // 初始化
+  async correctVisitDate() {
+    const visit = this.currentVisit;
+    if (!visit || visit.status !== 'draft' || this._managingVisit) return;
+    const date = prompt('输入正确的访视日期（YYYY-MM-DD），已录入的表单会保留：', visit.visit_date);
+    if (date === null || date === visit.visit_date) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {showToast('请按 YYYY-MM-DD 输入日期','error');return;}
+    this._managingVisit = true;
+    const finish = OperationFeedback.start('正在更正日期…','#visit-edit-date, #visit-delete');
+    try {
+      const updated = await api('PUT',`/api/visits/${visit.id}`,{visit_date:date});
+      if (this.currentVisit === visit) {
+        visit.visit_date = updated.visit_date;
+        const option = document.querySelector(`#entry-visit-select option[value="${visit.id}"]`);
+        if (option) option.textContent = option.textContent.replace(/（[^）]*）/,`（${updated.visit_date}）`);
+      }
+      showToast('访视日期已更正，原有表单保留');
+    } catch(e) {showToast(e.message,'error');}
+    finally {this._managingVisit=false;finish();}
+  },
+  async deleteDraftVisit() {
+    const visit = this.currentVisit, patient = this.currentPatient;
+    if (!visit || visit.status !== 'draft' || this._managingVisit || this._savingVisit) return;
+    if (this._uploadingPhotos || this._deletingPhoto) {showToast('请等待照片操作完成','error');return;}
+    if (!confirm(`确定删除 ${visit.visit_date} 的草稿访视及其全部已填表单？删除不可撤销。若只是日期填错，请取消后使用“更正日期”。患者和其他访视会保留。`)) return;
+    this._managingVisit = true;this.stopAutosave();
+    const finish=OperationFeedback.start('正在删除访视…','#visit-edit-date, #visit-delete');
+    try {
+      if (this._saveQueue) await this._saveQueue;
+      await api('DELETE',`/api/visits/${visit.id}`);
+      if (this.currentPatient === patient && this.currentVisit === visit) {
+        this._dirty=false;this.currentVisit=null;
+        const url=new URL(location.href);url.searchParams.delete('visit');history.replaceState(null,'',url);
+        await this.loadPatientVisits();
+      }
+      showToast('草稿访视已删除，可以重新创建');
+    } catch(e) {showToast(e.message,'error');}
+    finally {this._managingVisit=false;finish();if(this.currentVisit?.status==='draft')this.startAutosave();}
+  },
   init() {
     if (!document.getElementById('entry-form-area')) return;
     this.setupEventListeners();
@@ -370,6 +408,7 @@ const VisitEntry = {
   updateEditability() {
     const role = getUser()?.role;
     const editable = this.currentVisit?.status === 'draft' && ['researcher', 'center_admin', 'main_admin'].includes(role);
+    for (const id of ['visit-edit-date','visit-delete']) document.getElementById(id)?.classList.toggle('hidden', !editable);
     const photoHint = document.getElementById?.('cost-photo-edit-hint');
     if (photoHint) {
       const status = this.currentVisit?.status;
@@ -390,6 +429,8 @@ const VisitEntry = {
   },
 
   updateVisitStatusBadge() {
+    const canManage = this.currentVisit?.status === 'draft' && ['researcher','center_admin','main_admin'].includes(getUser()?.role);
+    for (const id of ['visit-edit-date','visit-delete']) document.getElementById(id)?.classList.toggle('hidden', !canManage);
     const badge = document.getElementById('entry-visit-status');
     if (!badge) return;
     if (!this.currentVisit) { badge.classList.add('hidden'); return; }
@@ -1303,6 +1344,7 @@ const VisitEntry = {
 
   // 保存全部表单到后端（各表单独立接口）
   saveAllForms(verbose = true) {
+    if (this._managingVisit) return Promise.resolve(false);
     const visitId = this.currentVisit?.id;
     const run = async () => {
       if (this.currentVisit?.id !== visitId) return false;

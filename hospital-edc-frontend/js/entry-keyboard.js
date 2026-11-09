@@ -1,5 +1,15 @@
 // Focus is a navigation hint, never an answer. Only explicit input changes data.
 const EntryKeyboard = {
+  reveal(el) {
+    const target = el.type === 'radio' ? el.closest('label') || el : el;
+    for (let parent = target.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+      if (!/(auto|scroll)/.test(getComputedStyle(parent).overflowY) || parent.scrollHeight <= parent.clientHeight) continue;
+      const box = target.getBoundingClientRect(), frame = parent.getBoundingClientRect();
+      if (box.bottom > frame.bottom) parent.scrollTop += box.bottom - frame.bottom + 8;
+      else if (box.top < frame.top) parent.scrollTop -= frame.top - box.top + 8;
+      break;
+    }
+  },
   eligible(el) {
     return !el.disabled && !el.readOnly && !['hidden','file','button','submit'].includes(el.type)
       && el.getClientRects().length > 0;
@@ -29,6 +39,7 @@ const EntryKeyboard = {
     if (!area) return;
     area.querySelectorAll('input[type="radio"].hidden').forEach(el => {
       el.classList.remove('hidden'); el.classList.add('edc-keyboard-radio');
+      el.closest('label')?.classList.add('edc-radio-anchor');
     });
     if (area.dataset.keyboardBound) return;
     area.dataset.keyboardBound = '1';
@@ -58,7 +69,7 @@ const EntryKeyboard = {
       const index = steps.findIndex(item => item === el || (el.type === 'radio' && item.name === el.name));
       const next = steps[index + (e.shiftKey ? -1 : 1)];
       if (next) {
-        next.focus({preventScroll:true});next.scrollIntoView({block:'nearest'});
+        next.focus({preventScroll:true});this.reveal(next);
       } else if (!e.shiftKey) {
         panel.querySelector('[data-page-save]:not(:disabled)')?.focus({preventScroll:true});
       }

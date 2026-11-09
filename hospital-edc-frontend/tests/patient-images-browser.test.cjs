@@ -40,7 +40,7 @@ test('group selectors show exactly the three supplied options, including confirm
     assert.deepEqual(await page.locator('#cp-subgroup option').evaluateAll(nodes=>nodes.map(n=>n.value)), ['',...values]);
     await page.selectOption('#cp-subgroup', values[0]);
   }
-  assert.match(await page.locator('#cp-group option[value="usual_daily"]').innerText(), /D组：常规诊疗\+周制剂/);
+  assert.match(await page.locator('#cp-group option[value="usual_daily"]').innerText(), /D组：常规\+日制剂/);
   await page.selectOption('#cp-group', 'integrated_weekly');
   assert.equal(await page.locator('#cp-subgroup').inputValue(), '');
   await page.getByRole('button',{name:'取消',exact:true}).click();

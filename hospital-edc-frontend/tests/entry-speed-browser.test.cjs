@@ -148,3 +148,19 @@ test('failed form remains retryable and edit during save is not marked saved', a
   assert.ok(!result.retry.some(u=>u.endsWith('/physical-exam')));
   assert.equal(result.dirty,true);
 });
+
+test('date correction retains unsaved fields and draft deletion reloads visits', async t=>{
+ const page=await entryPage(t);
+ const result=await page.evaluate(async()=>{
+   setUser({role:'researcher'});VisitEntry.currentVisit.visit_date='2026-11-01';
+   document.getElementById('pe-height').value='170';VisitEntry.markDirty();
+   window.prompt=()=> '2026-11-09';window.api=async(method,url,payload)=>{sent.push({method,url,payload});return {visit_date:'2026-11-09'};};
+   await VisitEntry.correctVisitDate();
+   const date=VisitEntry.currentVisit.visit_date,dirty=VisitEntry._dirty,height=document.getElementById('pe-height').value;
+   window.confirm=()=>false;await VisitEntry.deleteDraftVisit();const canceled=sent.filter(x=>x.method==='DELETE').length;
+   window.confirm=()=>true;VisitEntry.loadPatientVisits=async()=>{window.reloaded=true;};
+   await VisitEntry.deleteDraftVisit();
+   return {date,dirty,height,canceled,reloaded:window.reloaded,deleted:sent.filter(x=>x.method==='DELETE').length};
+ });
+ assert.deepEqual(result,{date:'2026-11-09',dirty:true,height:'170',canceled:0,reloaded:true,deleted:1});
+});

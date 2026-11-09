@@ -159,7 +159,8 @@ input[type=number]::-webkit-inner-spin-button {
 }
 
 /* Keep custom radio cards keyboard-accessible without preselecting answers. */
-.edc-keyboard-radio { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.edc-radio-anchor { position: relative; }
+.edc-keyboard-radio { position: absolute; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; }
 #entry-form-area label:has(input[type="radio"]:focus-visible) {
   outline: 3px solid #2563eb; outline-offset: 3px; border-radius: 6px;
 }

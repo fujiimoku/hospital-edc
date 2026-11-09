@@ -6,8 +6,8 @@ STUDY_GROUPS = {
     "integrated_weekly": "A组：三一照护+周制剂",
     "integrated_daily": "B组：三一照护+每日注射",
     "usual_weekly": "C组：常规诊疗+周制剂",
-    # Preserve the existing database key. D's display was explicitly confirmed on 2026-10-14.
-    "usual_daily": "D组：常规诊疗+周制剂",
+    # Preserve the database key; D display updated by request on 2026-11-09.
+    "usual_daily": "D组：常规+日制剂",
 }
 GROUP_LETTERS = dict(zip(STUDY_GROUPS, "ABCD"))
 StudySubgroup = Literal["icodec", "semaglutide", "icodec_semaglutide", "daily_glp1", "daily_insulin", "daily_combination"]

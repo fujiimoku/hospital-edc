@@ -122,6 +122,14 @@ def update_visit(
     changes = data.model_dump(exclude_unset=True)
     # 状态不允许通过 PUT 直接改（需走状态流转端点）
     changes.pop("status", None)
+    if 'visit_date' in changes:
+        if changes['visit_date'] is None:
+            raise HTTPException(422, "访视日期不能为空")
+        if visit.visit_type == 'interim' and db.query(Visit).filter(
+            Visit.patient_id == visit.patient_id, Visit.visit_type == 'interim',
+            Visit.visit_date == changes['visit_date'], Visit.id != visit.id,
+        ).first():
+            raise HTTPException(400, "该日期已有中间采集记录，请选择其他日期")
     diff = diff_model(visit, changes)
     for key, value in changes.items():
         setattr(visit, key, value)
@@ -130,6 +138,31 @@ def update_visit(
     db.commit()
     db.refresh(visit)
     return visit
+
+
+@router.delete("/{visit_id}")
+def delete_draft_visit(visit_id: int, db: Session = Depends(get_db), current_user=Depends(require_researcher)):
+    visit = _get_visit_with_access(visit_id, db, current_user, for_update=True)
+    if visit.status != 'draft':
+        raise HTTPException(400, "仅草稿访视可删除，请先按原流程撤回或退回草稿")
+    from app.database import Base
+    from sqlalchemy import select
+    tables = Base.metadata.tables
+    # Attachments and safety/QC records require deliberate handling, never silent cascading.
+    for name in ('patient_images', 'adverse_events', 'queries'):
+        table = tables[name]
+        if db.execute(select(table.c.id).where(table.c.visit_id == visit_id).limit(1)).first():
+            raise HTTPException(400, "该访视有关联照片、不良事件或质疑记录，请使用更正日期；照片可先逐张删除")
+    forms = ('physical_exams', 'lab_results', 'comorbidities', 'cost_indicators',
+             'followup_safety', 'questionnaires', 'medications', 'lifestyle_assessments', 'meal_records')
+    for name in forms:
+        table = tables[name]
+        db.execute(table.delete().where(table.c.visit_id == visit_id))
+    log_action(db, current_user, 'visits', visit.id, 'delete',
+               f'删除草稿 patient_id={visit.patient_id};type={visit.visit_type};date={visit.visit_date}')
+    db.execute(Visit.__table__.delete().where(Visit.id == visit_id))
+    db.commit()
+    return {'message': '草稿访视已删除', 'visit_id': visit_id}
 
 
 # ── 状态流转 ────────────────────────────────────────

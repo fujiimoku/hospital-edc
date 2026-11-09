@@ -109,7 +109,7 @@ async function api(method, path, body) {
 
 const STUDY_GROUP_LABELS = {
   integrated_weekly: 'A组：三一照护+周制剂', integrated_daily: 'B组：三一照护+每日注射',
-  usual_weekly: 'C组：常规诊疗+周制剂', usual_daily: 'D组：常规诊疗+周制剂',
+  usual_weekly: 'C组：常规诊疗+周制剂', usual_daily: 'D组：常规+日制剂',
 };
 function escapeText(value) {
   return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

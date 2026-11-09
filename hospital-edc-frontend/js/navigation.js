@@ -47,7 +47,7 @@ async function loadPatientsPage() {
 
   if (!pageEl.hasAttribute('data-loaded')) {
     try {
-      const response = await fetch('pages/patients.html?v=20261022');
+      const response = await fetch('pages/patients.html?v=20261109');
       const html = await response.text();
       pageEl.innerHTML = html;
       pageEl.setAttribute('data-loaded', 'true');
@@ -75,7 +75,7 @@ async function loadEntry() {
 
   if (!pageEl.hasAttribute('data-loaded')) {
     try {
-      const response = await fetch('pages/visit-entry.html?v=20261022');
+      const response = await fetch('pages/visit-entry.html?v=20261109b');
       const html = await response.text();
       pageEl.innerHTML = html;
       pageEl.setAttribute('data-loaded', 'true');
