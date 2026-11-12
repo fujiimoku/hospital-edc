@@ -19,9 +19,9 @@ const PatientImages = {
     modal.id = 'patient-images-modal';
     modal.className = 'fixed inset-0 bg-black/40 z-50 flex items-center justify-center';
     modal.innerHTML = `<div class="bg-white rounded-xl p-6 w-full max-w-2xl max-h-screen overflow-auto">
-      <div class="flex justify-between"><h3 class="font-semibold">医疗费用图片 · ${escapeText(patient.patient_code)} · ${escapeText(patient.full_name || patient.name_initials)}</h3>
+      <div class="flex justify-between"><h3 class="font-semibold">图片快捷上传 · ${escapeText(patient.patient_code)} · ${escapeText(patient.full_name || patient.name_initials)}</h3>
       <button onclick="PatientImages.close()" aria-label="关闭图片">关闭</button></div>
-      <p class="text-xs text-gray-500 my-3">图片仅归档，不自动计算费用。支持 JPG、PNG、WebP，每张最多15MB。下载文件以组别和患者姓名开头，附编号与图片序号；未填写姓名时使用首字母。</p>
+      <p class="text-xs text-gray-500 my-3">无需提交审核或撤回访视，上传后直接保存到当前患者名下，不计入某次访视的费用照片。图片仅归档，不自动计算费用。支持 JPG、PNG、WebP，每张最多15MB。下载文件以组别和患者姓名开头，附编号与图片序号；未填写姓名时使用首字母。</p>
       <input id="patient-images-files" type="file" multiple accept="image/jpeg,image/png,image/webp" class="my-2"/>
       <button id="patient-images-upload" onclick="PatientImages.upload()" class="text-blue-600 p-2">上传所选图片</button>
       <button id="patient-images-archive" onclick="PatientImages.download('archive')" class="text-blue-600 p-2" disabled>全部打包下载</button>
@@ -204,7 +204,7 @@ function renderPatientTable(items, total) {
       <p class="text-sm">${escapeText(STUDY_GROUP_LABELS[p.study_group] || '未分组')} · ${escapeText(STUDY_SUBGROUP_LABELS[p.study_subgroup] || '细分组待确认')}</p>
       <div class="flex flex-wrap gap-3 items-center mt-3">
         <label class="text-sm">追踪 <select aria-label="追踪标签" data-previous="${p.tracking_status || 'pending'}" onchange="setPatientTracking(${p.id},this)" class="border rounded p-1"><option value="pending" ${p.tracking_status !== 'completed' ? 'selected' : ''}>待追踪</option><option value="completed" ${p.tracking_status === 'completed' ? 'selected' : ''}>已完成追踪</option></select></label>
-        <button onclick="PatientImages.open(${p.id})" class="text-blue-600 text-sm">图片</button>
+        <button onclick="PatientImages.open(${p.id})" class="text-blue-600 text-sm">图片快捷上传</button>
         <button onclick="selectPatient(${p.id})" class="text-blue-600 text-sm">查看／录入（新标签页）</button>
       </div></article>`;
   }).join('');
